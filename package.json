@@ -1,0 +1,21 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "description": "A tool for managing agent assets with versioning and agent-specific adaptation.",
+  "type": "module",
+  "bin": {
+    "harness": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node ./src/cli.js",
+    "check": "node --check ./src/cli.js && node --check ./src/core/workspace.js && node --check ./src/core/adapters.js && node --check ./src/utils/diff.js"
+  },
+  "keywords": [
+    "agent",
+    "assets",
+    "skills",
+    "instructions",
+    "versioning"
+  ],
+  "license": "MIT"
+}
