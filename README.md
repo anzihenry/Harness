@@ -110,7 +110,7 @@ node ./src/cli.js show skill skill.prompt-authoring
 node ./src/cli.js export openai-codex
 ```
 
-导出结果默认写入 `exports/<target>.json`。
+导出结果默认写入 `.harness/workspace.json` 中 `exportDirectory` 指定的目录；当前默认值是 `exports/<target>.json`。
 
 ## 命令说明
 
@@ -178,7 +178,7 @@ node ./src/cli.js show instruction instruction.repository-guardrails
 
 ### `export <target>`
 
-按目标 Agent 规范导出配置。
+按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。
 
 ```bash
 node ./src/cli.js export generic

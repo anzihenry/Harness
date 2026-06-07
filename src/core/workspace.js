@@ -4,6 +4,7 @@ import {
   assetsRoot,
   assetKindMap,
   exportsRoot,
+  resolveExportDirectory,
   resolveAssetDirectory,
   resolveAssetPath,
   resolveSnapshotDirectory,
@@ -175,6 +176,19 @@ function isSemver(version) {
   return /^\d+\.\d+\.\d+$/.test(version);
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isSafeRelativePath(filePath) {
+  if (!isNonEmptyString(filePath)) {
+    return false;
+  }
+
+  const normalized = path.posix.normalize(filePath.replaceAll("\\", "/"));
+  return !normalized.startsWith("/") && normalized !== ".." && !normalized.startsWith("../");
+}
+
 function isSupportedKind(kind) {
   return Object.hasOwn(assetKindMap, kind);
 }
@@ -230,6 +244,10 @@ async function writeSnapshot(kind, assetId, version, metadata, content) {
 
   await writeJson(path.join(snapshotDir, "asset.json"), snapshotMetadata);
   await writeFile(path.join(snapshotDir, metadata.content.entry), content, "utf8");
+}
+
+function getWorkspaceExportDirectory(workspace) {
+  return resolveExportDirectory(workspace.exportDirectory || "exports");
 }
 
 export async function initWorkspace(options = {}) {
@@ -320,6 +338,12 @@ export async function createAsset(kind, assetId, options = {}) {
   }
 
   const targets = options.targets ? options.targets.split(",").map((item) => item.trim()).filter(Boolean) : workspace.supportedTargets;
+  for (const target of targets) {
+    if (!workspace.supportedTargets.includes(target)) {
+      throw new Error(`Unsupported compatibility target for ${assetId}: ${target}`);
+    }
+  }
+
   const tags = parseTags(options.tags);
   const metadata = {
     id: assetId,
@@ -442,12 +466,44 @@ export async function validateWorkspace() {
   const workspace = await loadWorkspace();
   const assets = await listAssets();
 
-  if (!workspace.name) {
+  if (!isNonEmptyString(workspace.name)) {
     issues.push("Workspace name is required.");
+  }
+
+  if (!isSemver(workspace.version)) {
+    issues.push(`Workspace version must be semver: ${workspace.version}`);
   }
 
   if (!Array.isArray(workspace.supportedTargets) || workspace.supportedTargets.length === 0) {
     issues.push("Workspace must declare supportedTargets.");
+  }
+
+  if (!isNonEmptyString(workspace.defaultTarget)) {
+    issues.push("Workspace defaultTarget is required.");
+  } else if (!workspace.supportedTargets?.includes(workspace.defaultTarget)) {
+    issues.push(`Workspace defaultTarget must be included in supportedTargets: ${workspace.defaultTarget}`);
+  }
+
+  if (!isNonEmptyString(workspace.exportDirectory)) {
+    issues.push("Workspace exportDirectory is required.");
+  } else if (!isSafeRelativePath(workspace.exportDirectory)) {
+    issues.push(`Workspace exportDirectory must be a safe relative path: ${workspace.exportDirectory}`);
+  }
+
+  if (Array.isArray(workspace.supportedTargets)) {
+    const supportedTargets = new Set();
+    for (const target of workspace.supportedTargets) {
+      if (!isNonEmptyString(target)) {
+        issues.push("Workspace supportedTargets entries must be non-empty strings.");
+        continue;
+      }
+
+      if (supportedTargets.has(target)) {
+        issues.push(`Workspace supportedTargets contains duplicates: ${target}`);
+      }
+
+      supportedTargets.add(target);
+    }
   }
 
   for (const asset of assets) {
@@ -473,12 +529,22 @@ export async function validateWorkspace() {
       issues.push(`Asset missing name: ${asset.id}`);
     }
 
+    if (!isNonEmptyString(asset.description)) {
+      issues.push(`Asset description is required: ${asset.id}`);
+    }
+
+    if (!isNonEmptyString(asset.owner)) {
+      issues.push(`Asset owner is required: ${asset.id}`);
+    }
+
     if (!isSemver(asset.version)) {
       issues.push(`Asset version must be semver: ${asset.id} -> ${asset.version}`);
     }
 
     if (!asset.content?.entry) {
       issues.push(`Asset content.entry is required: ${asset.id}`);
+    } else if (!isSafeRelativePath(asset.content.entry)) {
+      issues.push(`Asset content.entry must be a safe relative path: ${asset.id} -> ${asset.content.entry}`);
     }
 
     if (!Array.isArray(asset.history) || asset.history.length === 0) {
@@ -487,7 +553,20 @@ export async function validateWorkspace() {
       issues.push(`Current version missing from history: ${asset.id} -> ${asset.version}`);
     }
 
+    if (!Array.isArray(asset.tags)) {
+      issues.push(`Asset tags must be an array: ${asset.id}`);
+    }
+
+    if (!Array.isArray(asset.compatibility?.targets) || asset.compatibility.targets.length === 0) {
+      issues.push(`Asset compatibility.targets is required: ${asset.id}`);
+    }
+
     for (const target of asset.compatibility?.targets || []) {
+      if (!isNonEmptyString(target)) {
+        issues.push(`Asset compatibility target must be a non-empty string: ${asset.id}`);
+        continue;
+      }
+
       if (!workspace.supportedTargets.includes(target)) {
         issues.push(`Unsupported compatibility target on ${asset.id}: ${target}`);
       }
@@ -501,13 +580,34 @@ export async function validateWorkspace() {
 
     for (const entry of asset.history || []) {
       const snapshotDir = path.join(assetDir, entry.snapshot || "");
+      if (!isSemver(entry.version)) {
+        issues.push(`History entry version must be semver: ${asset.id} -> ${entry.version}`);
+      }
+
+      if (!isNonEmptyString(entry.date)) {
+        issues.push(`History entry date is required: ${asset.id} -> ${entry.version}`);
+      }
+
+      if (!isNonEmptyString(entry.notes)) {
+        issues.push(`History entry notes are required: ${asset.id} -> ${entry.version}`);
+      }
+
       if (!entry.snapshot) {
         issues.push(`History entry missing snapshot path: ${asset.id} -> ${entry.version}`);
         continue;
       }
 
+      if (!isSafeRelativePath(entry.snapshot)) {
+        issues.push(`History entry snapshot must be a safe relative path: ${asset.id} -> ${entry.snapshot}`);
+        continue;
+      }
+
       if (!(await pathExists(path.join(snapshotDir, "asset.json")))) {
         issues.push(`Missing snapshot metadata: ${asset.id} -> ${entry.version}`);
+      }
+
+      if (!(await pathExists(path.join(snapshotDir, asset.content.entry)))) {
+        issues.push(`Missing snapshot content: ${asset.id} -> ${entry.version}`);
       }
     }
   }
@@ -523,8 +623,13 @@ export async function validateWorkspace() {
 export async function exportWorkspace(target) {
   const workspace = await loadWorkspace();
   const assets = await listAssets();
+  if (!workspace.supportedTargets.includes(target)) {
+    throw new Error(`Target ${target} is not enabled in workspace.supportedTargets`);
+  }
+
   const output = renderForTarget(target, workspace, assets);
-  const outputPath = path.join(exportsRoot, `${target}.json`);
+  const exportDirectory = getWorkspaceExportDirectory(workspace);
+  const outputPath = path.join(exportDirectory, `${target}.json`);
 
   await writeJson(outputPath, output);
 

@@ -29,3 +29,7 @@ export function resolveAssetPath(kind, assetId) {
 export function resolveSnapshotDirectory(kind, assetId) {
   return path.join(resolveAssetPath(kind, assetId), snapshotsFolderName);
 }
+
+export function resolveExportDirectory(exportDirectory = "exports") {
+  return path.resolve(workspaceRoot, exportDirectory);
+}
