@@ -245,6 +245,25 @@ export default {
 };
 ```
 
+## Release / Versioning
+
+Harness 当前有三层版本语义：
+
+- 项目版本：`package.json` 和 `.harness/workspace.json` 中的 `version`，表示当前工具/工作区基线版本。
+- 资产版本：每个 asset 自己的 `version` 和 `history`，用于跟踪单个 agent、skill、instruction 的演进。
+- Git 版本标签：用于标记某一份完整仓库代码快照，例如当前仓库已经打上 `v0.1.0`。
+
+推荐的使用方式：
+
+1. 用 asset 级 `version` 管理单个资产内容变化。
+2. 当工具能力或工作区基线达到一个可发布节点时，更新项目级 `version`。
+3. 在 Git 中为该提交打 tag，例如 `v0.1.0`、`v0.2.0`，作为正式 release 锚点。
+
+对当前仓库来说：
+
+- `0.1.0` 表示第一版可用 MVP 基线。
+- `v0.1.0` 对应的是当前这份已发布到远端的代码快照。
+
 ## 下一步建议
 
 这一版已经覆盖初始化、校验、创建、版本提升、差异比较和导出。如果继续推进，建议优先做这几个方向：
