@@ -11,6 +11,7 @@ import {
   showAsset,
   validateWorkspace
 } from "./core/workspace.js";
+import { summarizeDiff } from "./utils/diff.js";
 
 function parseFlags(args) {
   const flags = {};
@@ -67,6 +68,17 @@ function printJson(data) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+function pluralize(count, noun) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function printSection(title, lines = []) {
+  console.log(title);
+  for (const line of lines) {
+    console.log(line);
+  }
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
 
@@ -89,10 +101,25 @@ async function main() {
     case "list": {
       const workspace = await loadWorkspace();
       const assets = await listAssets();
+      const groupedAssets = {
+        agent: assets.filter((asset) => asset.kind === "agent"),
+        skill: assets.filter((asset) => asset.kind === "skill"),
+        instruction: assets.filter((asset) => asset.kind === "instruction")
+      };
 
-      console.log(`Workspace: ${workspace.name} (${workspace.version})`);
-      for (const asset of assets) {
-        console.log(`- [${asset.kind}] ${asset.id} @ ${asset.version}`);
+      console.log(`${workspace.name} (${workspace.version})`);
+      console.log(`Assets: ${assets.length}`);
+
+      for (const [kind, items] of Object.entries(groupedAssets)) {
+        if (items.length === 0) {
+          continue;
+        }
+
+        console.log("");
+        console.log(`${kind}s (${items.length})`);
+        for (const asset of items) {
+          console.log(`- ${asset.id} @ ${asset.version}`);
+        }
       }
       return;
     }
@@ -100,14 +127,17 @@ async function main() {
     case "validate": {
       const result = await validateWorkspace();
       if (result.valid) {
-        console.log(`Workspace is valid. Checked ${result.assetCount} assets.`);
+        console.log(`Workspace is valid.`);
+        console.log(`Checked ${result.assetCount} assets.`);
         return;
       }
 
-      console.log(`Workspace validation failed with ${result.issueCount} issue(s):`);
-      for (const issue of result.issues) {
-        console.log(`- ${issue}`);
-      }
+      console.log(`Workspace validation failed.`);
+      console.log(`Found ${pluralize(result.issueCount, "issue")}.`);
+      console.log("");
+      result.issues.forEach((issue, index) => {
+        console.log(`${index + 1}. ${issue}`);
+      });
       process.exitCode = 1;
       return;
     }
@@ -144,13 +174,16 @@ async function main() {
       }
 
       const result = await diffAsset(kind, assetId, fromVersion, toVersion);
-      console.log(`Diff for ${result.id}: ${result.fromVersion} -> ${result.toVersion}`);
+      const metadataSummary = summarizeDiff(result.metadataDiff);
+      const contentSummary = summarizeDiff(result.contentDiff);
+
+      console.log(`Diff: ${result.id}`);
+      console.log(`Kind: ${result.kind}`);
+      console.log(`Range: ${result.fromVersion} -> ${result.toVersion}`);
       console.log("");
-      console.log("Metadata:");
-      console.log(result.metadataDiff);
+      printSection(`Metadata (${metadataSummary.additions} additions, ${metadataSummary.removals} removals)`, [result.metadataDiff]);
       console.log("");
-      console.log("Content:");
-      console.log(result.contentDiff);
+      printSection(`Content (${contentSummary.additions} additions, ${contentSummary.removals} removals)`, [result.contentDiff]);
       return;
     }
 
@@ -171,7 +204,10 @@ async function main() {
       }
 
       const result = await exportWorkspace(target);
-      console.log(`Exported ${result.assetCount} assets to ${result.outputPath}`);
+      console.log(`Export complete.`);
+      console.log(`Target: ${result.target}`);
+      console.log(`Assets: ${result.assetCount}`);
+      console.log(`Output: ${result.outputPath}`);
       return;
     }
 

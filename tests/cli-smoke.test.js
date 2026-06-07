@@ -36,8 +36,11 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
 
     result = runCli(workspaceDir, ["list"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /\[agent\] agent\.harness-manager @ 0\.1\.0/);
-    assert.match(result.stdout, /\[skill\] skill\.prompt-authoring @ 1\.0\.0/);
+    assert.match(result.stdout, /Assets: 3/);
+    assert.match(result.stdout, /agents \(1\)/);
+    assert.match(result.stdout, /- agent\.harness-manager @ 0\.1\.0/);
+    assert.match(result.stdout, /skills \(1\)/);
+    assert.match(result.stdout, /- skill\.prompt-authoring @ 1\.0\.0/);
 
     result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring"]);
     assert.equal(result.status, 0, result.stderr);
@@ -65,12 +68,18 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
 
     result = runCli(workspaceDir, ["diff", "skill", "skill.release-checklist", "1.0.0", "1.1.0"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Diff for skill\.release-checklist: 1\.0\.0 -> 1\.1\.0/);
+    assert.match(result.stdout, /Diff: skill\.release-checklist/);
+    assert.match(result.stdout, /Range: 1\.0\.0 -> 1\.1\.0/);
+    assert.match(result.stdout, /Metadata \(\d+ additions, \d+ removals\)/);
+    assert.match(result.stdout, /Content \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Expanded rollout checks/);
 
     result = runCli(workspaceDir, ["export", "generic"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Exported 4 assets to/);
+    assert.match(result.stdout, /Export complete\./);
+    assert.match(result.stdout, /Target: generic/);
+    assert.match(result.stdout, /Assets: 4/);
+    assert.match(result.stdout, /Output: .*exports\/generic\.json/);
 
     const exportPath = path.join(workspaceDir, "exports", "generic.json");
     assert.equal(existsSync(exportPath), true);
@@ -115,7 +124,7 @@ test("export uses workspace exportDirectory and validate accepts the configured 
 
     result = runCli(workspaceDir, ["export", "generic"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /custom-exports\/nested\/generic\.json/);
+    assert.match(result.stdout, /Output: .*custom-exports\/nested\/generic\.json/);
 
     const exportPath = path.join(workspaceDir, "custom-exports", "nested", "generic.json");
     assert.equal(existsSync(exportPath), true);
