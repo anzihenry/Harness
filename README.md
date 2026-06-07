@@ -50,6 +50,8 @@ Harness 的设计目标是把这些内容收敛成一个可管理、可导出、
 - `openai-codex`
 - `claude-code`
 
+工作区也可以通过 `.harness/workspace.json` 中的 `adapterModules` 挂载本地 adapter 模块，为仓库新增自定义 target。
+
 适配器会把统一资产模型转换成目标 Agent 更容易消费的结构，例如：
 
 - `openai-codex` 输出更贴近 instructions / tools / assets 的组织方式
@@ -102,6 +104,7 @@ Harness 的设计目标是把这些内容收敛成一个可管理、可导出、
 node ./src/cli.js init
 node ./src/cli.js init --force
 node ./src/cli.js list
+node ./src/cli.js targets
 node ./src/cli.js validate
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
@@ -132,6 +135,14 @@ node ./src/cli.js init --force
 
 ```bash
 node ./src/cli.js list
+```
+
+### `targets`
+
+列出当前工作区可用的全部导出 targets，包括内置 adapter 和通过 `adapterModules` 加载的本地 adapter。
+
+```bash
+node ./src/cli.js targets
 ```
 
 ### `validate`
@@ -205,6 +216,34 @@ node ./src/cli.js export claude-code
 - 资产与适配器解耦
 - 版本信息与内容本体并存
 - 本地优先，后续再接远端 registry
+
+## 本地 Adapter 扩展
+
+如果你想为某个团队内 Agent 运行时增加专用导出格式，可以在工作区里声明本地 adapter 模块：
+
+```json
+{
+  "supportedTargets": ["generic", "json-lines"],
+  "defaultTarget": "generic",
+  "adapterModules": ["adapters/json-lines.js"]
+}
+```
+
+示例模块：
+
+```js
+export default {
+  target: "json-lines",
+  render(workspace, assets) {
+    return assets.map((asset) => ({
+      workspace: workspace.name,
+      id: asset.id,
+      kind: asset.kind,
+      version: asset.version
+    }));
+  }
+};
+```
 
 ## 下一步建议
 

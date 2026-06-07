@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { listAdapterTargets } from "./core/adapters.js";
 import {
   bumpAssetVersion,
   createAsset,
@@ -46,6 +47,7 @@ function printHelp() {
 Usage:
   harness init [--force]
   harness list
+  harness targets
   harness validate
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
   harness bump-version <kind> <id> <version> [--note <text>]
@@ -58,6 +60,7 @@ Examples:
   harness init
   harness init --force
   harness list
+  harness targets
   harness validate
   harness new skill skill.agent-review --owner team-harness --tags review,agent
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
@@ -126,6 +129,17 @@ async function main() {
         for (const asset of items) {
           console.log(`- ${asset.id} @ ${asset.version}`);
         }
+      }
+      return;
+    }
+
+    case "targets": {
+      const workspace = await loadWorkspace();
+      const targets = await listAdapterTargets(workspace);
+
+      console.log(`Targets (${targets.length})`);
+      for (const target of targets) {
+        console.log(`- ${target.target} [${target.source}]`);
       }
       return;
     }

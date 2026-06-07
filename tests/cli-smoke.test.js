@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -41,6 +41,11 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /- agent\.harness-manager @ 0\.1\.0/);
     assert.match(result.stdout, /skills \(1\)/);
     assert.match(result.stdout, /- skill\.prompt-authoring @ 1\.0\.0/);
+
+    result = runCli(workspaceDir, ["targets"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Targets \(3\)/);
+    assert.match(result.stdout, /- generic \[built-in\]/);
 
     result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring"]);
     assert.equal(result.status, 0, result.stderr);
@@ -144,6 +149,60 @@ test("export uses workspace exportDirectory and validate accepts the configured 
 
     const exportPath = path.join(workspaceDir, "custom-exports", "nested", "generic.json");
     assert.equal(existsSync(exportPath), true);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("workspace can load a local adapter module and export with the custom target", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const adaptersDir = path.join(workspaceDir, "adapters");
+    mkdirSync(adaptersDir, { recursive: true });
+    writeFileSync(
+      path.join(adaptersDir, "json-lines.js"),
+      `export default {
+  target: "json-lines",
+  render(workspace, assets) {
+    return assets.map((asset) => ({
+      target: "json-lines",
+      workspace: workspace.name,
+      id: asset.id,
+      kind: asset.kind,
+      version: asset.version
+    }));
+  }
+};
+`,
+      "utf8"
+    );
+
+    const workspaceConfigPath = path.join(workspaceDir, ".harness", "workspace.json");
+    const workspace = readJson(workspaceConfigPath);
+    workspace.adapterModules = ["adapters/json-lines.js"];
+    workspace.supportedTargets.push("json-lines");
+    writeFileSync(workspaceConfigPath, `${JSON.stringify(workspace, null, 2)}\n`, "utf8");
+
+    result = runCli(workspaceDir, ["targets"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /- json-lines \[.*adapters\/json-lines\.js\]/);
+
+    result = runCli(workspaceDir, ["validate"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["export", "json-lines"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Target: json-lines/);
+
+    const exportPath = path.join(workspaceDir, "exports", "json-lines.json");
+    assert.equal(existsSync(exportPath), true);
+    const exported = readJson(exportPath);
+    assert.equal(Array.isArray(exported), true);
+    assert.equal(exported[0].target, "json-lines");
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }

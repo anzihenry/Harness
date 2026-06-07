@@ -11,7 +11,7 @@ import {
   workspaceConfigPath
 } from "./paths.js";
 import { readJson, writeJson } from "../utils/json.js";
-import { renderForTarget } from "./adapters.js";
+import { listAdapterTargets, renderForTarget } from "./adapters.js";
 import { createJsonDiff, createTextDiff } from "../utils/diff.js";
 
 const defaultWorkspace = {
@@ -20,7 +20,8 @@ const defaultWorkspace = {
   timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   defaultTarget: "generic",
   supportedTargets: ["generic", "openai-codex", "claude-code"],
-  exportDirectory: "exports"
+  exportDirectory: "exports",
+  adapterModules: []
 };
 
 const sampleAssets = [
@@ -484,6 +485,7 @@ export async function validateWorkspace() {
   const issues = [];
   const workspace = await loadWorkspace();
   const assets = await listAssets();
+  let availableTargets = new Set();
 
   if (!isNonEmptyString(workspace.name)) {
     issues.push("Workspace name is required.");
@@ -509,6 +511,33 @@ export async function validateWorkspace() {
     issues.push(`Workspace exportDirectory must be a safe relative path: ${workspace.exportDirectory}`);
   }
 
+  if (!Array.isArray(workspace.adapterModules)) {
+    issues.push("Workspace adapterModules must be an array.");
+  } else {
+    for (const adapterModule of workspace.adapterModules) {
+      if (!isNonEmptyString(adapterModule)) {
+        issues.push("Workspace adapterModules entries must be non-empty strings.");
+        continue;
+      }
+
+      if (!isSafeRelativePath(adapterModule)) {
+        issues.push(`Workspace adapterModules entry must be a safe relative path: ${adapterModule}`);
+        continue;
+      }
+
+      if (!(await pathExists(path.resolve(process.cwd(), adapterModule)))) {
+        issues.push(`Workspace adapter module is missing: ${adapterModule}`);
+      }
+    }
+  }
+
+  try {
+    const targets = await listAdapterTargets(workspace);
+    availableTargets = new Set(targets.map((item) => item.target));
+  } catch (error) {
+    issues.push(`Failed to load adapter modules: ${error.message}`);
+  }
+
   if (Array.isArray(workspace.supportedTargets)) {
     const supportedTargets = new Set();
     for (const target of workspace.supportedTargets) {
@@ -519,6 +548,10 @@ export async function validateWorkspace() {
 
       if (supportedTargets.has(target)) {
         issues.push(`Workspace supportedTargets contains duplicates: ${target}`);
+      }
+
+      if (availableTargets.size > 0 && !availableTargets.has(target)) {
+        issues.push(`Workspace supportedTargets references an unavailable adapter: ${target}`);
       }
 
       supportedTargets.add(target);
@@ -652,7 +685,7 @@ export async function exportWorkspace(target) {
     throw new Error(`Target ${resolvedTarget} is not enabled in workspace.supportedTargets`);
   }
 
-  const output = renderForTarget(resolvedTarget, workspace, assets);
+  const output = await renderForTarget(resolvedTarget, workspace, assets);
   const exportDirectory = getWorkspaceExportDirectory(workspace);
   const outputPath = path.join(exportDirectory, `${resolvedTarget}.json`);
 

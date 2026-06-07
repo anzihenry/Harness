@@ -1,3 +1,6 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
 function toBaseAsset(asset) {
   return {
     id: asset.id,
@@ -93,18 +96,137 @@ function claudeCodeAdapter(workspace, assets) {
   };
 }
 
-export const adapters = {
-  generic: genericAdapter,
-  "openai-codex": openAICodexAdapter,
-  "claude-code": claudeCodeAdapter
-};
+const builtInAdapterDefinitions = [
+  {
+    target: "generic",
+    render: genericAdapter,
+    source: "built-in"
+  },
+  {
+    target: "openai-codex",
+    render: openAICodexAdapter,
+    source: "built-in"
+  },
+  {
+    target: "claude-code",
+    render: claudeCodeAdapter,
+    source: "built-in"
+  }
+];
 
-export function renderForTarget(target, workspace, assets) {
-  const adapter = adapters[target];
+function createRegistry() {
+  return new Map();
+}
+
+function normalizeAdapterDefinition(adapter, source) {
+  if (!adapter || typeof adapter !== "object") {
+    throw new Error(`Invalid adapter from ${source}. Expected an object export.`);
+  }
+
+  if (typeof adapter.target !== "string" || adapter.target.trim() === "") {
+    throw new Error(`Invalid adapter from ${source}. Adapter target must be a non-empty string.`);
+  }
+
+  if (typeof adapter.render !== "function") {
+    throw new Error(`Invalid adapter from ${source}. Adapter render must be a function.`);
+  }
+
+  return {
+    target: adapter.target,
+    render: adapter.render,
+    source
+  };
+}
+
+export function registerAdapter(registry, adapter) {
+  const normalized = normalizeAdapterDefinition(adapter, adapter.source || "runtime");
+  registry.set(normalized.target, normalized);
+  return normalized;
+}
+
+function registerBuiltInAdapters(registry) {
+  for (const adapter of builtInAdapterDefinitions) {
+    registerAdapter(registry, adapter);
+  }
+}
+
+function collectModuleAdapters(moduleExports, source) {
+  const candidates = [];
+
+  if (Array.isArray(moduleExports.adapters)) {
+    candidates.push(...moduleExports.adapters);
+  }
+
+  if (moduleExports.adapter) {
+    candidates.push(moduleExports.adapter);
+  }
+
+  if (moduleExports.default) {
+    if (Array.isArray(moduleExports.default)) {
+      candidates.push(...moduleExports.default);
+    } else if (typeof moduleExports.default === "function" && typeof moduleExports.target === "string") {
+      candidates.push({
+        target: moduleExports.target,
+        render: moduleExports.default
+      });
+    } else {
+      candidates.push(moduleExports.default);
+    }
+  }
+
+  if (typeof moduleExports.target === "string" && typeof moduleExports.render === "function") {
+    candidates.push({
+      target: moduleExports.target,
+      render: moduleExports.render
+    });
+  }
+
+  if (candidates.length === 0) {
+    throw new Error(`Adapter module ${source} did not export any adapters.`);
+  }
+
+  return candidates.map((adapter) => normalizeAdapterDefinition(adapter, source));
+}
+
+async function loadAdapterModule(modulePath) {
+  const moduleUrl = pathToFileURL(modulePath).href;
+  const moduleExports = await import(moduleUrl);
+  return collectModuleAdapters(moduleExports, modulePath);
+}
+
+export async function getAdapterRegistry(workspace, workspaceRoot = process.cwd()) {
+  const registry = createRegistry();
+  registerBuiltInAdapters(registry);
+
+  for (const adapterModule of workspace.adapterModules || []) {
+    const resolvedPath = path.resolve(workspaceRoot, adapterModule);
+    const adapters = await loadAdapterModule(resolvedPath);
+    for (const adapter of adapters) {
+      registerAdapter(registry, adapter);
+    }
+  }
+
+  return registry;
+}
+
+export async function listAdapterTargets(workspace, workspaceRoot = process.cwd()) {
+  const registry = await getAdapterRegistry(workspace, workspaceRoot);
+  return [...registry.values()]
+    .map((adapter) => ({
+      target: adapter.target,
+      source: adapter.source
+    }))
+    .sort((left, right) => left.target.localeCompare(right.target));
+}
+
+export async function renderForTarget(target, workspace, assets, workspaceRoot = process.cwd()) {
+  const registry = await getAdapterRegistry(workspace, workspaceRoot);
+  const adapter = registry.get(target);
+
   if (!adapter) {
-    const supported = Object.keys(adapters).join(", ");
+    const supported = [...registry.keys()].sort().join(", ");
     throw new Error(`Unsupported target: ${target}. Supported targets: ${supported}`);
   }
 
-  return adapter(workspace, assets);
+  return adapter.render(workspace, assets);
 }
