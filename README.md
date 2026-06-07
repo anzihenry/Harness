@@ -106,8 +106,11 @@ node ./src/cli.js validate
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0
+node ./src/cli.js history skill skill.agent-review
+node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 node ./src/cli.js show skill skill.prompt-authoring
 node ./src/cli.js export openai-codex
+node ./src/cli.js export
 ```
 
 导出结果默认写入 `.harness/workspace.json` 中 `exportDirectory` 指定的目录；当前默认值是 `exports/<target>.json`。
@@ -168,19 +171,29 @@ node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0
 node ./src/cli.js diff skill skill.agent-review 1.0.0
 ```
 
-### `show <kind> <id>`
+### `history <kind> <id>`
 
-查看指定资产的完整内容。
+查看指定资产的版本时间线。
+
+```bash
+node ./src/cli.js history skill skill.prompt-authoring
+```
+
+### `show <kind> <id> [version]`
+
+查看指定资产的完整内容；如果传入版本号，则返回对应 snapshot 的内容。
 
 ```bash
 node ./src/cli.js show instruction instruction.repository-guardrails
+node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 ```
 
-### `export <target>`
+### `export [target]`
 
-按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。
+按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。若省略 `target`，默认使用工作区配置中的 `defaultTarget`。
 
 ```bash
+node ./src/cli.js export
 node ./src/cli.js export generic
 node ./src/cli.js export openai-codex
 node ./src/cli.js export claude-code

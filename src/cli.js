@@ -5,10 +5,12 @@ import {
   createAsset,
   diffAsset,
   exportWorkspace,
+  getAssetHistory,
   initWorkspace,
   listAssets,
   loadWorkspace,
   showAsset,
+  showAssetVersion,
   validateWorkspace
 } from "./core/workspace.js";
 import { summarizeDiff } from "./utils/diff.js";
@@ -48,8 +50,9 @@ Usage:
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version]
-  harness show <kind> <id>
-  harness export <target>
+  harness history <kind> <id>
+  harness show <kind> <id> [version]
+  harness export [target]
 
 Examples:
   harness init
@@ -59,8 +62,11 @@ Examples:
   harness new skill skill.agent-review --owner team-harness --tags review,agent
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0
+  harness history skill skill.prompt-authoring
+  harness show skill skill.prompt-authoring 1.0.0
   harness show skill skill.prompt-authoring
   harness export openai-codex
+  harness export
 `);
 }
 
@@ -187,22 +193,36 @@ async function main() {
       return;
     }
 
-    case "show": {
+    case "history": {
       const [kind, assetId] = args;
       if (!kind || !assetId) {
-        throw new Error("Usage: harness show <kind> <id>");
+        throw new Error("Usage: harness history <kind> <id>");
       }
 
-      printJson(await showAsset(kind, assetId));
+      const result = await getAssetHistory(kind, assetId);
+      console.log(`History: ${result.id}`);
+      console.log(`Kind: ${result.kind}`);
+      console.log(`Current: ${result.currentVersion}`);
+      console.log("");
+      result.history.forEach((entry) => {
+        console.log(`- ${entry.version} | ${entry.date} | ${entry.notes}`);
+      });
+      return;
+    }
+
+    case "show": {
+      const [kind, assetId, version] = args;
+      if (!kind || !assetId) {
+        throw new Error("Usage: harness show <kind> <id> [version]");
+      }
+
+      const asset = version ? await showAssetVersion(kind, assetId, version) : await showAsset(kind, assetId);
+      printJson(asset);
       return;
     }
 
     case "export": {
       const [target] = args;
-      if (!target) {
-        throw new Error("Usage: harness export <target>");
-      }
-
       const result = await exportWorkspace(target);
       console.log(`Export complete.`);
       console.log(`Target: ${result.target}`);

@@ -434,6 +434,25 @@ async function loadSnapshot(kind, assetId, version) {
   };
 }
 
+export async function showAssetVersion(kind, assetId, version) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+  return loadSnapshot(kind, assetId, version);
+}
+
+export async function getAssetHistory(kind, assetId) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+  const asset = await loadAsset(kind, assetId);
+
+  return {
+    id: asset.id,
+    kind: asset.kind,
+    currentVersion: asset.version,
+    history: [...asset.history].sort((left, right) => left.version.localeCompare(right.version))
+  };
+}
+
 export async function diffAsset(kind, assetId, fromVersion, toVersion) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);
@@ -623,19 +642,25 @@ export async function validateWorkspace() {
 export async function exportWorkspace(target) {
   const workspace = await loadWorkspace();
   const assets = await listAssets();
-  if (!workspace.supportedTargets.includes(target)) {
-    throw new Error(`Target ${target} is not enabled in workspace.supportedTargets`);
+  const resolvedTarget = target || workspace.defaultTarget;
+
+  if (!resolvedTarget) {
+    throw new Error("No export target provided and workspace.defaultTarget is not set");
   }
 
-  const output = renderForTarget(target, workspace, assets);
+  if (!workspace.supportedTargets.includes(resolvedTarget)) {
+    throw new Error(`Target ${resolvedTarget} is not enabled in workspace.supportedTargets`);
+  }
+
+  const output = renderForTarget(resolvedTarget, workspace, assets);
   const exportDirectory = getWorkspaceExportDirectory(workspace);
-  const outputPath = path.join(exportDirectory, `${target}.json`);
+  const outputPath = path.join(exportDirectory, `${resolvedTarget}.json`);
 
   await writeJson(outputPath, output);
 
   return {
     outputPath,
-    target,
+    target: resolvedTarget,
     assetCount: assets.length
   };
 }

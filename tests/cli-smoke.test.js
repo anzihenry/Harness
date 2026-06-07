@@ -48,6 +48,12 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(shownAsset.id, "skill.prompt-authoring");
     assert.match(shownAsset.renderedContent, /Write prompts that are:/);
 
+    result = runCli(workspaceDir, ["history", "skill", "skill.prompt-authoring"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /History: skill\.prompt-authoring/);
+    assert.match(result.stdout, /Current: 1\.0\.0/);
+    assert.match(result.stdout, /- 1\.0\.0 \| 2026-06-06 \| Initial skill content\./);
+
     result = runCli(workspaceDir, [
       "new",
       "skill",
@@ -66,6 +72,12 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Bumped skill\.release-checklist from 1\.0\.0 to 1\.1\.0/);
 
+    result = runCli(workspaceDir, ["show", "skill", "skill.release-checklist", "1.0.0"]);
+    assert.equal(result.status, 0, result.stderr);
+    const snapshotAsset = JSON.parse(result.stdout);
+    assert.equal(snapshotAsset.version, "1.0.0");
+    assert.match(snapshotAsset.renderedContent, /Add skill content here\./);
+
     result = runCli(workspaceDir, ["diff", "skill", "skill.release-checklist", "1.0.0", "1.1.0"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Diff: skill\.release-checklist/);
@@ -73,6 +85,10 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /Metadata \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Content \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Expanded rollout checks/);
+
+    result = runCli(workspaceDir, ["export"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Target: generic/);
 
     result = runCli(workspaceDir, ["export", "generic"]);
     assert.equal(result.status, 0, result.stderr);
@@ -128,6 +144,18 @@ test("export uses workspace exportDirectory and validate accepts the configured 
 
     const exportPath = path.join(workspaceDir, "custom-exports", "nested", "generic.json");
     assert.equal(existsSync(exportPath), true);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("history fails clearly for missing arguments", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    const result = runCli(workspaceDir, ["history", "skill"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Usage: harness history <kind> <id>/);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
