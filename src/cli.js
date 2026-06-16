@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createRequire } from "node:module";
 import { listAdapterTargets } from "./core/adapters.js";
 import {
   bumpAssetVersion,
@@ -15,6 +16,9 @@ import {
   validateWorkspace
 } from "./core/workspace.js";
 import { summarizeDiff } from "./utils/diff.js";
+
+const require = createRequire(import.meta.url);
+const { version: cliVersion } = require("../package.json");
 
 function parseFlags(args) {
   const flags = {};
@@ -45,6 +49,7 @@ function printHelp() {
   console.log(`Harness CLI
 
 Usage:
+  harness --version
   harness init [--force]
   harness list
   harness targets
@@ -53,7 +58,7 @@ Usage:
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version]
   harness history <kind> <id>
-  harness show <kind> <id> [version]
+  harness show <kind> <id> [version] [--metadata|--content]
   harness export [target]
 
 Examples:
@@ -67,6 +72,7 @@ Examples:
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0
   harness history skill skill.prompt-authoring
   harness show skill skill.prompt-authoring 1.0.0
+  harness show skill skill.prompt-authoring --content
   harness show skill skill.prompt-authoring
   harness export openai-codex
   harness export
@@ -88,11 +94,20 @@ function printSection(title, lines = []) {
   }
 }
 
+function printVersion() {
+  console.log(`harness ${cliVersion}`);
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
+    return;
+  }
+
+  if (command === "--version" || command === "-v") {
+    printVersion();
     return;
   }
 
@@ -200,6 +215,10 @@ async function main() {
       console.log(`Diff: ${result.id}`);
       console.log(`Kind: ${result.kind}`);
       console.log(`Range: ${result.fromVersion} -> ${result.toVersion}`);
+      console.log(`Summary: ${result.metadataFieldsChanged.length} metadata fields changed; content ${result.hasContentChanges ? "changed" : "unchanged"}`);
+      if (result.metadataFieldsChanged.length > 0) {
+        console.log(`Fields: ${result.metadataFieldsChanged.join(", ")}`);
+      }
       console.log("");
       printSection(`Metadata (${metadataSummary.additions} additions, ${metadataSummary.removals} removals)`, [result.metadataDiff]);
       console.log("");
@@ -217,20 +236,42 @@ async function main() {
       console.log(`History: ${result.id}`);
       console.log(`Kind: ${result.kind}`);
       console.log(`Current: ${result.currentVersion}`);
+      console.log(`Versions: ${result.history.length}`);
       console.log("");
       result.history.forEach((entry) => {
-        console.log(`- ${entry.version} | ${entry.date} | ${entry.notes}`);
+        const marker = entry.version === result.currentVersion ? "*" : "-";
+        console.log(`${marker} ${entry.version} | ${entry.date} | ${entry.notes}`);
+        if (entry.snapshot) {
+          console.log(`  snapshot: ${entry.snapshot}`);
+        }
       });
       return;
     }
 
     case "show": {
-      const [kind, assetId, version] = args;
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId, version] = positionals;
       if (!kind || !assetId) {
-        throw new Error("Usage: harness show <kind> <id> [version]");
+        throw new Error("Usage: harness show <kind> <id> [version] [--metadata|--content]");
       }
 
       const asset = version ? await showAssetVersion(kind, assetId, version) : await showAsset(kind, assetId);
+      if (flags.metadata === "true" && flags.content === "true") {
+        throw new Error("Choose either --metadata or --content, not both.");
+      }
+
+      if (flags.metadata === "true") {
+        const metadata = { ...asset };
+        delete metadata.renderedContent;
+        printJson(metadata);
+        return;
+      }
+
+      if (flags.content === "true") {
+        console.log(asset.renderedContent);
+        return;
+      }
+
       printJson(asset);
       return;
     }

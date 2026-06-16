@@ -26,7 +26,11 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
   const workspaceDir = createWorkspaceDir();
 
   try {
-    let result = runCli(workspaceDir, ["init"]);
+    let result = runCli(workspaceDir, ["--version"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /harness 0\.1\.1/);
+
+    result = runCli(workspaceDir, ["init"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Initialized Harness workspace/);
 
@@ -57,7 +61,19 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /History: skill\.prompt-authoring/);
     assert.match(result.stdout, /Current: 1\.0\.0/);
-    assert.match(result.stdout, /- 1\.0\.0 \| 2026-06-06 \| Initial skill content\./);
+    assert.match(result.stdout, /Versions: 1/);
+    assert.match(result.stdout, /\* 1\.0\.0 \| 2026-06-06 \| Initial skill content\./);
+    assert.match(result.stdout, /snapshot: \.snapshots\/1\.0\.0/);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--metadata"]);
+    assert.equal(result.status, 0, result.stderr);
+    const metadataOnly = JSON.parse(result.stdout);
+    assert.equal(metadataOnly.id, "skill.prompt-authoring");
+    assert.equal("renderedContent" in metadataOnly, false);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--content"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Write prompts that are:/);
 
     result = runCli(workspaceDir, [
       "new",
@@ -87,6 +103,8 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Diff: skill\.release-checklist/);
     assert.match(result.stdout, /Range: 1\.0\.0 -> 1\.1\.0/);
+    assert.match(result.stdout, /Summary: \d+ metadata fields changed; content unchanged/);
+    assert.match(result.stdout, /Fields: history, version/);
     assert.match(result.stdout, /Metadata \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Content \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Expanded rollout checks/);
@@ -107,6 +125,21 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     const exported = readJson(exportPath);
     assert.equal(exported.target, "generic");
     assert.equal(exported.assets.length, 4);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("show rejects mutually exclusive metadata and content flags", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--metadata", "--content"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Choose either --metadata or --content, not both\./);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
@@ -203,6 +236,37 @@ test("workspace can load a local adapter module and export with the custom targe
     const exported = readJson(exportPath);
     assert.equal(Array.isArray(exported), true);
     assert.equal(exported[0].target, "json-lines");
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("validate catches broken history and snapshot consistency", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const assetPath = path.join(workspaceDir, "assets", "skills", "skill.prompt-authoring", "asset.json");
+    const asset = readJson(assetPath);
+    asset.version = "1.1.0";
+    asset.compatibility.targets.push("generic");
+    asset.history.push({
+      version: "1.0.0",
+      date: "2026-06-06",
+      notes: "Duplicate version entry.",
+      snapshot: ".snapshots/not-the-version"
+    });
+    writeFileSync(assetPath, `${JSON.stringify(asset, null, 2)}\n`, "utf8");
+
+    result = runCli(workspaceDir, ["validate"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /Workspace validation failed\./);
+    assert.match(result.stdout, /Asset current version must match latest history entry: skill\.prompt-authoring -> 1\.1\.0/);
+    assert.match(result.stdout, /Asset compatibility\.targets contains duplicates: skill\.prompt-authoring -> generic/);
+    assert.match(result.stdout, /History entry version must be unique: skill\.prompt-authoring -> 1\.0\.0/);
+    assert.match(result.stdout, /History entry snapshot path must match version: skill\.prompt-authoring -> 1\.0\.0/);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }

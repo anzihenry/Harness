@@ -1,6 +1,6 @@
 {
   "name": "Harness",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "timezone": "Asia/Shanghai",
   "defaultTarget": "generic",
   "supportedTargets": [
@@ -8,5 +8,6 @@
     "openai-codex",
     "claude-code"
   ],
-  "exportDirectory": "exports"
+  "exportDirectory": "exports",
+  "adapterModules": []
 }

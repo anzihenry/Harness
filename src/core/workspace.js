@@ -10,13 +10,13 @@ import {
   resolveSnapshotDirectory,
   workspaceConfigPath
 } from "./paths.js";
-import { readJson, writeJson } from "../utils/json.js";
+import { readJson, stableStringify, writeJson } from "../utils/json.js";
 import { listAdapterTargets, renderForTarget } from "./adapters.js";
 import { createJsonDiff, createTextDiff } from "../utils/diff.js";
 
 const defaultWorkspace = {
   name: "Harness",
-  version: "0.1.0",
+  version: "0.1.1",
   timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   defaultTarget: "generic",
   supportedTargets: ["generic", "openai-codex", "claude-code"],
@@ -175,6 +175,20 @@ function parseTags(tags) {
 
 function isSemver(version) {
   return /^\d+\.\d+\.\d+$/.test(version);
+}
+
+function compareSemver(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const delta = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+
+  return 0;
 }
 
 function isNonEmptyString(value) {
@@ -435,6 +449,25 @@ async function loadSnapshot(kind, assetId, version) {
   };
 }
 
+function stripRenderedContent(asset) {
+  const normalized = { ...asset };
+  delete normalized.renderedContent;
+  return normalized;
+}
+
+function summarizeMetadataFieldChanges(left, right) {
+  const changedFields = [];
+  const fieldNames = new Set([...Object.keys(left), ...Object.keys(right)]);
+
+  for (const fieldName of fieldNames) {
+    if (stableStringify(left[fieldName]) !== stableStringify(right[fieldName])) {
+      changedFields.push(fieldName);
+    }
+  }
+
+  return changedFields.sort((a, b) => a.localeCompare(b));
+}
+
 export async function showAssetVersion(kind, assetId, version) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);
@@ -450,7 +483,7 @@ export async function getAssetHistory(kind, assetId) {
     id: asset.id,
     kind: asset.kind,
     currentVersion: asset.version,
-    history: [...asset.history].sort((left, right) => left.version.localeCompare(right.version))
+    history: [...asset.history].sort((left, right) => compareSemver(right.version, left.version))
   };
 }
 
@@ -462,21 +495,17 @@ export async function diffAsset(kind, assetId, fromVersion, toVersion) {
   const left = await loadSnapshot(kind, assetId, fromVersion);
   const right = targetVersion === asset.version ? asset : await loadSnapshot(kind, assetId, targetVersion);
 
+  const leftMetadata = stripRenderedContent(left);
+  const rightMetadata = stripRenderedContent(right);
+
   return {
     id: assetId,
     kind,
     fromVersion,
     toVersion: targetVersion,
-    metadataDiff: createJsonDiff(
-      {
-        ...left,
-        renderedContent: undefined
-      },
-      {
-        ...right,
-        renderedContent: undefined
-      }
-    ),
+    metadataFieldsChanged: summarizeMetadataFieldChanges(leftMetadata, rightMetadata),
+    hasContentChanges: left.renderedContent !== right.renderedContent,
+    metadataDiff: createJsonDiff(leftMetadata, rightMetadata),
     contentDiff: createTextDiff(left.renderedContent, right.renderedContent)
   };
 }
@@ -493,6 +522,10 @@ export async function validateWorkspace() {
 
   if (!isSemver(workspace.version)) {
     issues.push(`Workspace version must be semver: ${workspace.version}`);
+  }
+
+  if (!isNonEmptyString(workspace.timezone)) {
+    issues.push("Workspace timezone is required.");
   }
 
   if (!Array.isArray(workspace.supportedTargets) || workspace.supportedTargets.length === 0) {
@@ -613,15 +646,22 @@ export async function validateWorkspace() {
       issues.push(`Asset compatibility.targets is required: ${asset.id}`);
     }
 
+    const compatibilityTargets = new Set();
     for (const target of asset.compatibility?.targets || []) {
       if (!isNonEmptyString(target)) {
         issues.push(`Asset compatibility target must be a non-empty string: ${asset.id}`);
         continue;
       }
 
+      if (compatibilityTargets.has(target)) {
+        issues.push(`Asset compatibility.targets contains duplicates: ${asset.id} -> ${target}`);
+      }
+
       if (!workspace.supportedTargets.includes(target)) {
         issues.push(`Unsupported compatibility target on ${asset.id}: ${target}`);
       }
+
+      compatibilityTargets.add(target);
     }
 
     const assetDir = resolveAssetPath(asset.kind, asset.id);
@@ -630,11 +670,18 @@ export async function validateWorkspace() {
       issues.push(`Missing content file: ${asset.id} -> ${asset.content.entry}`);
     }
 
+    const historyVersions = new Set();
+    let lastHistoryEntry = null;
     for (const entry of asset.history || []) {
       const snapshotDir = path.join(assetDir, entry.snapshot || "");
       if (!isSemver(entry.version)) {
         issues.push(`History entry version must be semver: ${asset.id} -> ${entry.version}`);
       }
+
+      if (historyVersions.has(entry.version)) {
+        issues.push(`History entry version must be unique: ${asset.id} -> ${entry.version}`);
+      }
+      historyVersions.add(entry.version);
 
       if (!isNonEmptyString(entry.date)) {
         issues.push(`History entry date is required: ${asset.id} -> ${entry.version}`);
@@ -654,13 +701,44 @@ export async function validateWorkspace() {
         continue;
       }
 
-      if (!(await pathExists(path.join(snapshotDir, "asset.json")))) {
+      const expectedSnapshotPath = `.snapshots/${entry.version}`;
+      if (entry.snapshot !== expectedSnapshotPath) {
+        issues.push(`History entry snapshot path must match version: ${asset.id} -> ${entry.version}`);
+      }
+
+      const snapshotMetadataPath = path.join(snapshotDir, "asset.json");
+      if (!(await pathExists(snapshotMetadataPath))) {
         issues.push(`Missing snapshot metadata: ${asset.id} -> ${entry.version}`);
+      } else {
+        const snapshotMetadata = await readJson(snapshotMetadataPath);
+        if (snapshotMetadata.id !== asset.id) {
+          issues.push(`Snapshot metadata id mismatch: ${asset.id} -> ${entry.version}`);
+        }
+
+        if (snapshotMetadata.kind !== asset.kind) {
+          issues.push(`Snapshot metadata kind mismatch: ${asset.id} -> ${entry.version}`);
+        }
+
+        if (snapshotMetadata.version !== entry.version) {
+          issues.push(`Snapshot metadata version mismatch: ${asset.id} -> ${entry.version}`);
+        }
+
+        if (snapshotMetadata.content?.entry !== asset.content.entry) {
+          issues.push(`Snapshot content.entry mismatch: ${asset.id} -> ${entry.version}`);
+        }
       }
 
       if (!(await pathExists(path.join(snapshotDir, asset.content.entry)))) {
         issues.push(`Missing snapshot content: ${asset.id} -> ${entry.version}`);
       }
+
+      if (!lastHistoryEntry || compareSemver(entry.version, lastHistoryEntry.version) > 0) {
+        lastHistoryEntry = entry;
+      }
+    }
+
+    if (lastHistoryEntry && asset.version !== lastHistoryEntry.version) {
+      issues.push(`Asset current version must match latest history entry: ${asset.id} -> ${asset.version}`);
     }
   }
 
