@@ -11,6 +11,7 @@ import {
   initWorkspace,
   listAssets,
   loadWorkspace,
+  packWorkspace,
   showResolvedAsset,
   showAsset,
   showAssetVersion,
@@ -62,7 +63,8 @@ Usage:
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
-  harness export [target] [--json]
+  harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
+  harness pack [target] --entry <kind:id> [--include-dependencies] [--output <dir>] [--json]
 
 Examples:
   harness init
@@ -80,6 +82,8 @@ Examples:
   harness show skill skill.prompt-authoring --content
   harness show agent agent.harness-manager --resolved
   harness show skill skill.prompt-authoring
+  harness export generic --entry agent:agent.harness-manager --include-dependencies --json
+  harness pack generic --entry agent:agent.harness-manager --include-dependencies --json
   harness export openai-codex --json
   harness export
 `);
@@ -102,6 +106,22 @@ function printSection(title, lines = []) {
 
 function printVersion() {
   console.log(`harness ${cliVersion}`);
+}
+
+function parseEntryFlag(entry) {
+  if (!entry) {
+    return null;
+  }
+
+  const [kind, assetId, ...rest] = entry.split(":");
+  if (!kind || !assetId || rest.length > 0 || !supportedKinds.includes(kind)) {
+    throw new Error(`Invalid --entry value: ${entry}. Expected format: <kind>:<id>`);
+  }
+
+  return {
+    kind,
+    id: assetId
+  };
 }
 
 function assertListFilters(flags) {
@@ -387,7 +407,10 @@ async function main() {
     case "export": {
       const { flags, positionals } = parseFlags(args);
       const [target] = positionals;
-      const result = await exportWorkspace(target);
+      const result = await exportWorkspace(target, {
+        entry: parseEntryFlag(flags.entry),
+        includeDependencies: flags["include-dependencies"] === "true"
+      });
       if (flags.json === "true") {
         printJson(result);
         return;
@@ -396,7 +419,34 @@ async function main() {
       console.log(`Export complete.`);
       console.log(`Target: ${result.target}`);
       console.log(`Assets: ${result.assetCount}`);
+      if (result.entry) {
+        console.log(`Entry: ${result.entry}`);
+        console.log(`Included dependencies: ${result.includeDependencies ? "yes" : "no"}`);
+      }
       console.log(`Output: ${result.outputPath}`);
+      return;
+    }
+
+    case "pack": {
+      const { flags, positionals } = parseFlags(args);
+      const [target] = positionals;
+      const result = await packWorkspace(target, {
+        entry: parseEntryFlag(flags.entry),
+        includeDependencies: flags["include-dependencies"] === "true",
+        output: flags.output
+      });
+      if (flags.json === "true") {
+        printJson(result);
+        return;
+      }
+
+      console.log(`Pack complete.`);
+      console.log(`Target: ${result.target}`);
+      console.log(`Entry: ${result.entry}`);
+      console.log(`Assets: ${result.assetCount}`);
+      console.log(`Included dependencies: ${result.includeDependencies ? "yes" : "no"}`);
+      console.log(`Bundle: ${result.bundlePath}`);
+      console.log(`Manifest: ${result.manifestPath}`);
       return;
     }
 

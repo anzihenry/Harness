@@ -121,6 +121,8 @@ node ./src/cli.js show skill skill.prompt-authoring --content
 node ./src/cli.js show agent agent.harness-manager --resolved
 node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 node ./src/cli.js show skill skill.prompt-authoring
+node ./src/cli.js export generic --entry agent:agent.harness-manager --include-dependencies --json
+node ./src/cli.js pack generic --entry agent:agent.harness-manager --include-dependencies --json
 node ./src/cli.js export openai-codex --json
 node ./src/cli.js export
 ```
@@ -228,13 +230,25 @@ node ./src/cli.js show skill skill.prompt-authoring --content
 
 ### `export [target]`
 
-按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。若省略 `target`，默认使用工作区配置中的 `defaultTarget`。传入 `--json` 时返回结构化导出结果。
+按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。若省略 `target`，默认使用工作区配置中的 `defaultTarget`。传入 `--entry <kind:id>` 时可只导出指定入口资产；再加 `--include-dependencies` 时会把依赖闭包一并带上。传入 `--json` 时返回结构化导出结果。
 
 ```bash
 node ./src/cli.js export
 node ./src/cli.js export generic
+node ./src/cli.js export generic --entry skill:skill.prompt-authoring
+node ./src/cli.js export generic --entry agent:agent.harness-manager --include-dependencies --json
 node ./src/cli.js export openai-codex --json
 node ./src/cli.js export claude-code
+```
+
+### `pack [target]`
+
+生成面向交付的 bundle 目录，而不只是单个 target 的导出结果。`pack` 需要 `--entry <kind:id>`，并会写出 `manifest.json`、`assets.json` 和 `rendered/<target>.json`。如果再加 `--include-dependencies`，会把依赖闭包一并打包。
+
+```bash
+node ./src/cli.js pack generic --entry agent:agent.harness-manager
+node ./src/cli.js pack generic --entry agent:agent.harness-manager --include-dependencies --json
+node ./src/cli.js pack openai-codex --entry agent:agent.harness-manager --output releases/harness-manager-codex
 ```
 
 ## 设计原则

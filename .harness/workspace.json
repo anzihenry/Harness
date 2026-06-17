@@ -1,6 +1,7 @@
 {
   "name": "Harness",
   "version": "0.1.1",
+  "schemaVersion": "1",
   "timezone": "Asia/Shanghai",
   "defaultTarget": "generic",
   "supportedTargets": [
@@ -9,5 +10,6 @@
     "claude-code"
   ],
   "exportDirectory": "exports",
+  "bundleDirectory": "releases",
   "adapterModules": []
 }

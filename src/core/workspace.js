@@ -17,10 +17,12 @@ import { createJsonDiff, createTextDiff } from "../utils/diff.js";
 const defaultWorkspace = {
   name: "Harness",
   version: "0.1.1",
+  schemaVersion: "1",
   timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   defaultTarget: "generic",
   supportedTargets: ["generic", "openai-codex", "claude-code"],
   exportDirectory: "exports",
+  bundleDirectory: "releases",
   adapterModules: []
 };
 
@@ -281,6 +283,14 @@ function getWorkspaceExportDirectory(workspace) {
   return resolveExportDirectory(workspace.exportDirectory || "exports");
 }
 
+function getWorkspaceBundleDirectory(workspace) {
+  return resolveExportDirectory(workspace.bundleDirectory || "releases");
+}
+
+function currentTimestamp() {
+  return new Date().toISOString();
+}
+
 export async function initWorkspace(options = {}) {
   if (!options.force && (await pathExists(workspaceConfigPath))) {
     throw new Error("Harness workspace already exists. Re-run with --force to overwrite the current workspace.");
@@ -381,6 +391,14 @@ function summarizeResolvedAsset(asset) {
   const summary = { ...asset };
   delete summary.renderedContent;
   return summary;
+}
+
+function toBundleAsset(asset) {
+  const summary = summarizeResolvedAsset(asset);
+  return {
+    ...summary,
+    content: asset.renderedContent
+  };
 }
 
 export async function createAsset(kind, assetId, options = {}) {
@@ -501,6 +519,97 @@ function dependencyKey(dependency) {
   return `${dependency.kind}:${dependency.id}`;
 }
 
+function createAssetMap(assets) {
+  return new Map(assets.map((asset) => [asset.id, asset]));
+}
+
+function resolveAssetSelection(rootAsset, assetMap, options = {}) {
+  const includeDependencies = options.includeDependencies === true;
+  const selectedAssets = new Map([[rootAsset.id, rootAsset]]);
+  const missing = [];
+  const cycles = [];
+  const visiting = new Set();
+  const visited = new Set();
+
+  function walk(asset, stack = []) {
+    if (!includeDependencies) {
+      return;
+    }
+
+    visiting.add(asset.id);
+    for (const dependency of asset.dependencies || []) {
+      if (stack.includes(dependency.id) || visiting.has(dependency.id)) {
+        cycles.push([...stack, asset.id, dependency.id]);
+        continue;
+      }
+
+      const dependencyAsset = assetMap.get(dependency.id);
+      if (!dependencyAsset) {
+        missing.push({
+          from: asset.id,
+          kind: dependency.kind,
+          id: dependency.id,
+          required: dependency.required ?? true
+        });
+        continue;
+      }
+
+      selectedAssets.set(dependencyAsset.id, dependencyAsset);
+      if (visited.has(dependencyAsset.id)) {
+        continue;
+      }
+
+      walk(dependencyAsset, [...stack, asset.id]);
+    }
+
+    visiting.delete(asset.id);
+    visited.add(asset.id);
+  }
+
+  walk(rootAsset);
+
+  return {
+    assets: [...selectedAssets.values()].sort((left, right) => left.id.localeCompare(right.id)),
+    missing,
+    cycles
+  };
+}
+
+function selectExportAssets(allAssets, resolvedTarget, entry, includeDependencies) {
+  const assetMap = createAssetMap(allAssets);
+  let exportAssets = allAssets;
+
+  if (entry) {
+    assertSupportedKind(entry.kind);
+    assertValidAssetId(entry.kind, entry.id);
+
+    const rootAsset = assetMap.get(entry.id);
+    if (!rootAsset) {
+      throw new Error(`Entry asset not found: ${entry.kind}:${entry.id}`);
+    }
+
+    const selection = resolveAssetSelection(rootAsset, assetMap, { includeDependencies });
+    if (selection.missing.length > 0) {
+      const firstMissing = selection.missing[0];
+      throw new Error(`Missing dependency for export: ${firstMissing.from} -> ${firstMissing.kind}:${firstMissing.id}`);
+    }
+
+    if (selection.cycles.length > 0) {
+      throw new Error(`Dependency cycle blocks export: ${selection.cycles[0].join(" -> ")}`);
+    }
+
+    exportAssets = selection.assets;
+  }
+
+  for (const asset of exportAssets) {
+    if (!asset.compatibility?.targets?.includes(resolvedTarget)) {
+      throw new Error(`Asset is not compatible with target ${resolvedTarget}: ${asset.id}`);
+    }
+  }
+
+  return exportAssets;
+}
+
 function validateAssetDependencies(asset, assetMap, issues, cycleIssues) {
   if (asset.dependencies === undefined) {
     return;
@@ -619,7 +728,7 @@ export async function showResolvedAsset(kind, assetId, version) {
 
   const rootAsset = version ? await loadSnapshot(kind, assetId, version) : await loadAsset(kind, assetId);
   const assets = await listAssets();
-  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  const assetMap = createAssetMap(assets);
   const visiting = new Set();
   const visited = new Set();
   const flattenedAssets = new Map([[rootAsset.id, summarizeResolvedAsset(rootAsset)]]);
@@ -780,6 +889,18 @@ export async function validateWorkspace() {
     issues.push("Workspace exportDirectory is required.");
   } else if (!isSafeRelativePath(workspace.exportDirectory)) {
     issues.push(`Workspace exportDirectory must be a safe relative path: ${workspace.exportDirectory}`);
+  }
+
+  if (workspace.bundleDirectory !== undefined) {
+    if (!isNonEmptyString(workspace.bundleDirectory)) {
+      issues.push("Workspace bundleDirectory must be a non-empty string.");
+    } else if (!isSafeRelativePath(workspace.bundleDirectory)) {
+      issues.push(`Workspace bundleDirectory must be a safe relative path: ${workspace.bundleDirectory}`);
+    }
+  }
+
+  if (workspace.schemaVersion !== undefined && !isNonEmptyString(workspace.schemaVersion)) {
+    issues.push("Workspace schemaVersion must be a non-empty string.");
   }
 
   if (!Array.isArray(workspace.adapterModules)) {
@@ -992,10 +1113,12 @@ export async function validateWorkspace() {
   };
 }
 
-export async function exportWorkspace(target) {
+export async function exportWorkspace(target, options = {}) {
   const workspace = await loadWorkspace();
   const assets = await listAssets();
   const resolvedTarget = target || workspace.defaultTarget;
+  const entry = options.entry;
+  const includeDependencies = options.includeDependencies === true;
 
   if (!resolvedTarget) {
     throw new Error("No export target provided and workspace.defaultTarget is not set");
@@ -1005,7 +1128,8 @@ export async function exportWorkspace(target) {
     throw new Error(`Target ${resolvedTarget} is not enabled in workspace.supportedTargets`);
   }
 
-  const output = await renderForTarget(resolvedTarget, workspace, assets);
+  const exportAssets = selectExportAssets(assets, resolvedTarget, entry, includeDependencies);
+  const output = await renderForTarget(resolvedTarget, workspace, exportAssets);
   const exportDirectory = getWorkspaceExportDirectory(workspace);
   const outputPath = path.join(exportDirectory, `${resolvedTarget}.json`);
 
@@ -1014,6 +1138,85 @@ export async function exportWorkspace(target) {
   return {
     outputPath,
     target: resolvedTarget,
-    assetCount: assets.length
+    assetCount: exportAssets.length,
+    entry: entry ? `${entry.kind}:${entry.id}` : null,
+    includeDependencies
+  };
+}
+
+export async function packWorkspace(target, options = {}) {
+  const workspace = await loadWorkspace();
+  const resolvedTarget = target || workspace.defaultTarget;
+  const entry = options.entry;
+  const includeDependencies = options.includeDependencies === true;
+
+  if (!entry) {
+    throw new Error("Pack requires --entry <kind:id>");
+  }
+
+  if (options.output && !isSafeRelativePath(options.output)) {
+    throw new Error(`Pack output must be a safe relative path: ${options.output}`);
+  }
+
+  const assets = await listAssets();
+  const assetMap = createAssetMap(assets);
+  const rootAsset = assetMap.get(entry.id);
+  if (!rootAsset) {
+    throw new Error(`Entry asset not found: ${entry.kind}:${entry.id}`);
+  }
+
+  const selection = resolveAssetSelection(rootAsset, assetMap, { includeDependencies });
+  const exportAssets = selectExportAssets(assets, resolvedTarget, entry, includeDependencies);
+  const renderedOutput = await renderForTarget(resolvedTarget, workspace, exportAssets);
+  const bundleDirectory = options.output
+    ? resolveExportDirectory(options.output)
+    : path.join(getWorkspaceBundleDirectory(workspace), `${entry.id}-${resolvedTarget}`);
+
+  const manifest = {
+    bundleVersion: "1",
+    workspace: {
+      name: workspace.name,
+      version: workspace.version,
+      schemaVersion: workspace.schemaVersion || "1"
+    },
+    target: resolvedTarget,
+    entryAsset: {
+      kind: rootAsset.kind,
+      id: rootAsset.id,
+      version: rootAsset.version
+    },
+    includeDependencies,
+    includedAssets: selection.assets.map((asset) => ({
+      kind: asset.kind,
+      id: asset.id,
+      version: asset.version
+    })),
+    generatedAt: currentTimestamp()
+  };
+
+  const assetsDocument = {
+    workspace: {
+      name: workspace.name,
+      version: workspace.version
+    },
+    target: resolvedTarget,
+    entry: `${entry.kind}:${entry.id}`,
+    includeDependencies,
+    assets: selection.assets.map(toBundleAsset)
+  };
+
+  await writeJson(path.join(bundleDirectory, "manifest.json"), manifest);
+  await writeJson(path.join(bundleDirectory, "assets.json"), assetsDocument);
+  await writeJson(path.join(bundleDirectory, "rendered", `${resolvedTarget}.json`), renderedOutput);
+
+  return {
+    bundlePath: bundleDirectory,
+    manifestPath: path.join(bundleDirectory, "manifest.json"),
+    assetsPath: path.join(bundleDirectory, "assets.json"),
+    renderedPath: path.join(bundleDirectory, "rendered", `${resolvedTarget}.json`),
+    target: resolvedTarget,
+    entry: `${entry.kind}:${entry.id}`,
+    includeDependencies,
+    assetCount: selection.assets.length
   };
 }

@@ -207,6 +207,26 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(defaultExportResult.assetCount, 4);
     assert.match(defaultExportResult.outputPath, /exports\/generic\.json/);
 
+    result = runCli(workspaceDir, ["export", "generic", "--entry", "agent:agent.harness-manager", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const entryOnlyExportResult = JSON.parse(result.stdout);
+    assert.equal(entryOnlyExportResult.target, "generic");
+    assert.equal(entryOnlyExportResult.entry, "agent:agent.harness-manager");
+    assert.equal(entryOnlyExportResult.includeDependencies, false);
+    assert.equal(entryOnlyExportResult.assetCount, 1);
+
+    let exported = readJson(path.join(workspaceDir, "exports", "generic.json"));
+    assert.equal(exported.assets.length, 1);
+    assert.equal(exported.assets[0].id, "agent.harness-manager");
+
+    result = runCli(workspaceDir, ["export", "generic", "--entry", "agent:agent.harness-manager", "--include-dependencies", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const entryWithDependenciesExportResult = JSON.parse(result.stdout);
+    assert.equal(entryWithDependenciesExportResult.target, "generic");
+    assert.equal(entryWithDependenciesExportResult.entry, "agent:agent.harness-manager");
+    assert.equal(entryWithDependenciesExportResult.includeDependencies, true);
+    assert.equal(entryWithDependenciesExportResult.assetCount, 3);
+
     result = runCli(workspaceDir, ["export", "generic"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Export complete\./);
@@ -214,9 +234,32 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /Assets: 4/);
     assert.match(result.stdout, /Output: .*exports\/generic\.json/);
 
+    result = runCli(workspaceDir, ["pack", "generic", "--entry", "agent:agent.harness-manager", "--include-dependencies", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const packResult = JSON.parse(result.stdout);
+    assert.equal(packResult.target, "generic");
+    assert.equal(packResult.entry, "agent:agent.harness-manager");
+    assert.equal(packResult.includeDependencies, true);
+    assert.equal(packResult.assetCount, 3);
+    assert.match(packResult.bundlePath, /releases\/agent\.harness-manager-generic/);
+
+    const manifest = readJson(packResult.manifestPath);
+    assert.equal(manifest.target, "generic");
+    assert.equal(manifest.entryAsset.id, "agent.harness-manager");
+    assert.equal(manifest.includeDependencies, true);
+    assert.equal(manifest.includedAssets.length, 3);
+
+    const bundleAssets = readJson(packResult.assetsPath);
+    assert.equal(bundleAssets.assets.length, 3);
+    assert.equal(bundleAssets.assets[0].content !== undefined, true);
+
+    const renderedBundle = readJson(packResult.renderedPath);
+    assert.equal(renderedBundle.target, "generic");
+    assert.equal(renderedBundle.assets.length, 3);
+
     const exportPath = path.join(workspaceDir, "exports", "generic.json");
     assert.equal(existsSync(exportPath), true);
-    const exported = readJson(exportPath);
+    exported = readJson(exportPath);
     assert.equal(exported.target, "generic");
     assert.equal(exported.assets.length, 4);
   } finally {
@@ -348,6 +391,17 @@ test("workspace can load a local adapter module and export with the custom targe
     workspace.supportedTargets.push("json-lines");
     writeFileSync(workspaceConfigPath, `${JSON.stringify(workspace, null, 2)}\n`, "utf8");
 
+    for (const assetLocation of [
+      ["agents", "agent.harness-manager"],
+      ["skills", "skill.prompt-authoring"],
+      ["instructions", "instruction.repository-guardrails"]
+    ]) {
+      const assetPath = path.join(workspaceDir, "assets", assetLocation[0], assetLocation[1], "asset.json");
+      const asset = readJson(assetPath);
+      asset.compatibility.targets.push("json-lines");
+      writeFileSync(assetPath, `${JSON.stringify(asset, null, 2)}\n`, "utf8");
+    }
+
     result = runCli(workspaceDir, ["targets"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /- json-lines \[.*adapters\/json-lines\.js\]/);
@@ -471,6 +525,36 @@ test("history fails clearly for missing arguments", () => {
     const result = runCli(workspaceDir, ["history", "skill"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Usage: harness history <kind> <id>/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("export rejects invalid entry values", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["export", "generic", "--entry", "workflow:foo"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Invalid --entry value: workflow:foo/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("pack requires an entry asset", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["pack", "generic"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Pack requires --entry <kind:id>/);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
