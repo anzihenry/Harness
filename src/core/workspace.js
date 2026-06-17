@@ -377,6 +377,12 @@ export async function showAsset(kind, assetId) {
   return loadAsset(kind, assetId);
 }
 
+function summarizeResolvedAsset(asset) {
+  const summary = { ...asset };
+  delete summary.renderedContent;
+  return summary;
+}
+
 export async function createAsset(kind, assetId, options = {}) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);
@@ -605,6 +611,103 @@ export async function showAssetVersion(kind, assetId, version) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);
   return loadSnapshot(kind, assetId, version);
+}
+
+export async function showResolvedAsset(kind, assetId, version) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+
+  const rootAsset = version ? await loadSnapshot(kind, assetId, version) : await loadAsset(kind, assetId);
+  const assets = await listAssets();
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  const visiting = new Set();
+  const visited = new Set();
+  const flattenedAssets = new Map([[rootAsset.id, summarizeResolvedAsset(rootAsset)]]);
+  const missing = [];
+  const cycles = [];
+  const edgeKeys = new Set();
+  const edges = [];
+
+  function buildNode(asset, stack = []) {
+    visiting.add(asset.id);
+    flattenedAssets.set(asset.id, summarizeResolvedAsset(asset));
+
+    const resolvedDependencies = [];
+    for (const dependency of asset.dependencies || []) {
+      const edgeKey = `${asset.id}->${dependency.id}`;
+      if (!edgeKeys.has(edgeKey)) {
+        edgeKeys.add(edgeKey);
+        edges.push({
+          from: asset.id,
+          to: dependency.id,
+          kind: dependency.kind,
+          required: dependency.required ?? true
+        });
+      }
+
+      if (stack.includes(dependency.id) || visiting.has(dependency.id)) {
+        const cyclePath = [...stack, asset.id, dependency.id];
+        cycles.push(cyclePath);
+        resolvedDependencies.push({
+          kind: dependency.kind,
+          id: dependency.id,
+          required: dependency.required ?? true,
+          status: "cycle",
+          cyclePath
+        });
+        continue;
+      }
+
+      const dependencyAsset = assetMap.get(dependency.id);
+      if (!dependencyAsset) {
+        missing.push({
+          from: asset.id,
+          kind: dependency.kind,
+          id: dependency.id,
+          required: dependency.required ?? true
+        });
+        resolvedDependencies.push({
+          kind: dependency.kind,
+          id: dependency.id,
+          required: dependency.required ?? true,
+          status: "missing"
+        });
+        continue;
+      }
+
+      resolvedDependencies.push({
+        kind: dependency.kind,
+        id: dependency.id,
+        required: dependency.required ?? true,
+        status: "resolved",
+        asset: summarizeResolvedAsset(dependencyAsset),
+        dependencies: visited.has(dependency.id) ? undefined : buildNode(dependencyAsset, [...stack, asset.id])
+      });
+    }
+
+    visiting.delete(asset.id);
+    visited.add(asset.id);
+    return resolvedDependencies;
+  }
+
+  const resolvedDependencies = buildNode(rootAsset);
+
+  return {
+    asset: rootAsset,
+    resolvedDependencies,
+    graph: {
+      assets: [...flattenedAssets.values()].sort((left, right) => left.id.localeCompare(right.id)),
+      edges: edges.sort((left, right) => `${left.from}:${left.to}`.localeCompare(`${right.from}:${right.to}`)),
+      missing,
+      cycles
+    },
+    summary: {
+      directDependencyCount: (rootAsset.dependencies || []).length,
+      resolvedAssetCount: flattenedAssets.size,
+      missingDependencyCount: missing.length,
+      cycleCount: cycles.length
+    }
+  };
 }
 
 export async function getAssetHistory(kind, assetId) {

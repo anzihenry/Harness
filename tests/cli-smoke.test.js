@@ -90,6 +90,24 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
       ["skill:skill.prompt-authoring", "instruction:instruction.repository-guardrails"]
     );
 
+    result = runCli(workspaceDir, ["show", "agent", "agent.harness-manager", "--resolved"]);
+    assert.equal(result.status, 0, result.stderr);
+    const resolvedAgent = JSON.parse(result.stdout);
+    assert.equal(resolvedAgent.asset.id, "agent.harness-manager");
+    assert.equal(resolvedAgent.summary.directDependencyCount, 2);
+    assert.equal(resolvedAgent.summary.resolvedAssetCount, 3);
+    assert.equal(resolvedAgent.summary.missingDependencyCount, 0);
+    assert.equal(resolvedAgent.summary.cycleCount, 0);
+    assert.equal(resolvedAgent.resolvedDependencies.length, 2);
+    assert.equal(resolvedAgent.graph.assets.length, 3);
+    assert.deepEqual(
+      resolvedAgent.graph.edges.map((edge) => `${edge.from}->${edge.to}`),
+      [
+        "agent.harness-manager->instruction.repository-guardrails",
+        "agent.harness-manager->skill.prompt-authoring"
+      ]
+    );
+
     result = runCli(workspaceDir, ["history", "skill", "skill.prompt-authoring"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /History: skill\.prompt-authoring/);
@@ -215,7 +233,11 @@ test("show rejects mutually exclusive metadata and content flags", () => {
 
     result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--metadata", "--content"]);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Choose either --metadata or --content, not both\./);
+    assert.match(result.stderr, /Choose only one of --metadata, --content, or --resolved\./);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--metadata", "--resolved"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Choose only one of --metadata, --content, or --resolved\./);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }

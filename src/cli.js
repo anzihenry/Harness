@@ -11,6 +11,7 @@ import {
   initWorkspace,
   listAssets,
   loadWorkspace,
+  showResolvedAsset,
   showAsset,
   showAssetVersion,
   validateWorkspace
@@ -60,7 +61,7 @@ Usage:
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness history <kind> <id> [--json]
-  harness show <kind> <id> [version] [--metadata|--content]
+  harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--json]
 
 Examples:
@@ -77,6 +78,7 @@ Examples:
   harness history skill skill.prompt-authoring --json
   harness show skill skill.prompt-authoring 1.0.0
   harness show skill skill.prompt-authoring --content
+  harness show agent agent.harness-manager --resolved
   harness show skill skill.prompt-authoring
   harness export openai-codex --json
   harness export
@@ -352,14 +354,20 @@ async function main() {
       const { flags, positionals } = parseFlags(args);
       const [kind, assetId, version] = positionals;
       if (!kind || !assetId) {
-        throw new Error("Usage: harness show <kind> <id> [version] [--metadata|--content]");
+        throw new Error("Usage: harness show <kind> <id> [version] [--metadata|--content|--resolved]");
+      }
+
+      const enabledModes = [flags.metadata === "true", flags.content === "true", flags.resolved === "true"].filter(Boolean).length;
+      if (enabledModes > 1) {
+        throw new Error("Choose only one of --metadata, --content, or --resolved.");
+      }
+
+      if (flags.resolved === "true") {
+        printJson(await showResolvedAsset(kind, assetId, version));
+        return;
       }
 
       const asset = version ? await showAssetVersion(kind, assetId, version) : await showAsset(kind, assetId);
-      if (flags.metadata === "true" && flags.content === "true") {
-        throw new Error("Choose either --metadata or --content, not both.");
-      }
-
       if (flags.metadata === "true") {
         const metadata = { ...asset };
         delete metadata.renderedContent;

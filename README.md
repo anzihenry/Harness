@@ -118,6 +118,7 @@ node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js history skill skill.agent-review --json
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
+node ./src/cli.js show agent agent.harness-manager --resolved
 node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 node ./src/cli.js show skill skill.prompt-authoring
 node ./src/cli.js export openai-codex --json
@@ -213,12 +214,13 @@ node ./src/cli.js history skill skill.prompt-authoring
 node ./src/cli.js history skill skill.prompt-authoring --json
 ```
 
-### `show <kind> <id> [version] [--metadata|--content]`
+### `show <kind> <id> [version] [--metadata|--content|--resolved]`
 
-查看指定资产的完整内容；如果传入版本号，则返回对应 snapshot 的内容。也可以只看 metadata 或正文内容。
+查看指定资产的完整内容；如果传入版本号，则返回对应 snapshot 的内容。也可以只看 metadata、正文内容，或通过 `--resolved` 查看解析后的依赖树与依赖图。
 
 ```bash
 node ./src/cli.js show instruction instruction.repository-guardrails
+node ./src/cli.js show agent agent.harness-manager --resolved
 node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
