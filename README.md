@@ -39,6 +39,7 @@ Harness 的设计目标是把这些内容收敛成一个可管理、可导出、
 - `tags`
 - `owner`
 - `compatibility`
+- `dependencies`
 - `content`
 - `history`
 
@@ -73,6 +74,8 @@ Harness 的设计目标是把这些内容收敛成一个可管理、可导出、
 - 多环境推广
 - registry / remote sync
 
+`0.2.0` 起，资产模型开始支持 `dependencies`，用来声明一个 agent、skill 或 instruction 依赖的其他资产。当前 `validate` 已会检查依赖是否存在、是否重复、是否出现循环引用，以及依赖资产是否覆盖调用方声明的 compatibility targets。
+
 ## 目录结构
 
 ```text
@@ -105,17 +108,19 @@ node ./src/cli.js --version
 node ./src/cli.js init
 node ./src/cli.js init --force
 node ./src/cli.js list
+node ./src/cli.js list --kind skill --json
+node ./src/cli.js list --group-by owner
 node ./src/cli.js targets
-node ./src/cli.js validate
+node ./src/cli.js validate --json
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
-node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0
-node ./src/cli.js history skill skill.agent-review
+node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
+node ./src/cli.js history skill skill.agent-review --json
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
 node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 node ./src/cli.js show skill skill.prompt-authoring
-node ./src/cli.js export openai-codex
+node ./src/cli.js export openai-codex --json
 node ./src/cli.js export
 ```
 
@@ -142,10 +147,14 @@ node ./src/cli.js init --force
 
 ### `list`
 
-列出当前工作区中的全部资产。
+列出当前工作区中的资产，并支持按类型、标签、归属人和 target 过滤；传入 `--group-by kind|owner|target` 时可切换分组方式；传入 `--json` 时返回机器可读结构。
 
 ```bash
 node ./src/cli.js list
+node ./src/cli.js list --kind skill
+node ./src/cli.js list --tag review --owner team-harness
+node ./src/cli.js list --group-by owner
+node ./src/cli.js list --target openai-codex --json
 ```
 
 ### `targets`
@@ -158,10 +167,11 @@ node ./src/cli.js targets
 
 ### `validate`
 
-校验工作区配置、资产元数据、内容文件和版本快照是否完整。`0.1.1` 起还会额外校验 `timezone`、history 完整性、compatibility target 重复项，以及 snapshot metadata 与 live asset 的一致性。
+校验工作区配置、资产元数据、内容文件和版本快照是否完整。`0.1.1` 起还会额外校验 `timezone`、history 完整性、compatibility target 重复项，以及 snapshot metadata 与 live asset 的一致性。传入 `--json` 时返回稳定的机器可读结果，并在校验失败时保持非零退出码。
 
 ```bash
 node ./src/cli.js validate
+node ./src/cli.js validate --json
 ```
 
 ### `new <kind> <id>`
@@ -186,19 +196,21 @@ node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded r
 
 ### `diff <kind> <id> <from-version> [to-version]`
 
-比较两个版本的 metadata 和正文内容。若省略 `to-version`，默认对比到当前版本。
+比较两个版本的 metadata 和正文内容。若省略 `to-version`，默认对比到当前版本。传入 `--json` 时返回结构化 diff 结果。
 
 ```bash
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0
 node ./src/cli.js diff skill skill.agent-review 1.0.0
+node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 ```
 
 ### `history <kind> <id>`
 
-查看指定资产的版本时间线。当前版本会用 `*` 标记，并显示对应 snapshot 路径。
+查看指定资产的版本时间线。当前版本会用 `*` 标记，并显示对应 snapshot 路径。传入 `--json` 时返回结构化历史结果。
 
 ```bash
 node ./src/cli.js history skill skill.prompt-authoring
+node ./src/cli.js history skill skill.prompt-authoring --json
 ```
 
 ### `show <kind> <id> [version] [--metadata|--content]`
@@ -214,12 +226,12 @@ node ./src/cli.js show skill skill.prompt-authoring --content
 
 ### `export [target]`
 
-按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。若省略 `target`，默认使用工作区配置中的 `defaultTarget`。
+按目标 Agent 规范导出配置，输出目录由工作区配置中的 `exportDirectory` 决定。若省略 `target`，默认使用工作区配置中的 `defaultTarget`。传入 `--json` 时返回结构化导出结果。
 
 ```bash
 node ./src/cli.js export
 node ./src/cli.js export generic
-node ./src/cli.js export openai-codex
+node ./src/cli.js export openai-codex --json
 node ./src/cli.js export claude-code
 ```
 

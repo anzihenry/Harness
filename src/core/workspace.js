@@ -39,6 +39,18 @@ const sampleAssets = [
       compatibility: {
         targets: ["generic", "openai-codex", "claude-code"]
       },
+      dependencies: [
+        {
+          kind: "skill",
+          id: "skill.prompt-authoring",
+          required: true
+        },
+        {
+          kind: "instruction",
+          id: "instruction.repository-guardrails",
+          required: true
+        }
+      ],
       content: {
         entry: "content.md"
       },
@@ -195,6 +207,10 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isBoolean(value) {
+  return typeof value === "boolean";
+}
+
 function isSafeRelativePath(filePath) {
   if (!isNonEmptyString(filePath)) {
     return false;
@@ -302,11 +318,32 @@ async function loadAsset(kind, assetId) {
 
   return {
     ...metadata,
+    dependencies: Array.isArray(metadata.dependencies) ? metadata.dependencies : [],
     renderedContent
   };
 }
 
-export async function listAssets() {
+function matchesAssetFilters(asset, filters = {}) {
+  if (filters.kind && asset.kind !== filters.kind) {
+    return false;
+  }
+
+  if (filters.tag && !asset.tags.includes(filters.tag)) {
+    return false;
+  }
+
+  if (filters.owner && asset.owner !== filters.owner) {
+    return false;
+  }
+
+  if (filters.target && !asset.compatibility?.targets?.includes(filters.target)) {
+    return false;
+  }
+
+  return true;
+}
+
+export async function listAssets(filters = {}) {
   const assets = [];
 
   for (const kind of Object.keys(assetKindMap)) {
@@ -324,7 +361,10 @@ export async function listAssets() {
         continue;
       }
 
-      assets.push(await loadAsset(kind, entry.name));
+      const asset = await loadAsset(kind, entry.name);
+      if (matchesAssetFilters(asset, filters)) {
+        assets.push(asset);
+      }
     }
   }
 
@@ -371,6 +411,7 @@ export async function createAsset(kind, assetId, options = {}) {
     compatibility: {
       targets
     },
+    dependencies: [],
     content: {
       entry: "content.md"
     },
@@ -445,8 +486,100 @@ async function loadSnapshot(kind, assetId, version) {
 
   return {
     ...metadata,
+    dependencies: Array.isArray(metadata.dependencies) ? metadata.dependencies : [],
     renderedContent
   };
+}
+
+function dependencyKey(dependency) {
+  return `${dependency.kind}:${dependency.id}`;
+}
+
+function validateAssetDependencies(asset, assetMap, issues, cycleIssues) {
+  if (asset.dependencies === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(asset.dependencies)) {
+    issues.push(`Asset dependencies must be an array: ${asset.id}`);
+    return;
+  }
+
+  const seenDependencies = new Set();
+  for (const dependency of asset.dependencies) {
+    if (!dependency || typeof dependency !== "object") {
+      issues.push(`Asset dependency must be an object: ${asset.id}`);
+      continue;
+    }
+
+    const { kind, id, required = true } = dependency;
+    if (!isSupportedKind(kind)) {
+      issues.push(`Asset dependency kind is unsupported: ${asset.id} -> ${kind}`);
+      continue;
+    }
+
+    if (!isValidAssetId(kind, id)) {
+      issues.push(`Asset dependency id format is invalid: ${asset.id} -> ${id}`);
+      continue;
+    }
+
+    if (dependency.required !== undefined && !isBoolean(required)) {
+      issues.push(`Asset dependency required flag must be boolean: ${asset.id} -> ${dependencyKey(dependency)}`);
+    }
+
+    const key = dependencyKey({ kind, id });
+    if (seenDependencies.has(key)) {
+      issues.push(`Asset dependencies contain duplicates: ${asset.id} -> ${key}`);
+      continue;
+    }
+    seenDependencies.add(key);
+
+    const dependencyAsset = assetMap.get(id);
+    if (!dependencyAsset) {
+      issues.push(`Asset dependency is missing: ${asset.id} -> ${key}`);
+      continue;
+    }
+
+    for (const target of asset.compatibility?.targets || []) {
+      if (!dependencyAsset.compatibility?.targets?.includes(target)) {
+        issues.push(`Asset dependency target mismatch: ${asset.id} -> ${key} missing target ${target}`);
+      }
+    }
+  }
+
+  const visitState = new Map();
+  const visitStack = [];
+
+  function visit(assetId) {
+    const currentState = visitState.get(assetId);
+    if (currentState === "done") {
+      return;
+    }
+
+    if (currentState === "visiting") {
+      const cycleStartIndex = visitStack.indexOf(assetId);
+      const cyclePath = [...visitStack.slice(cycleStartIndex), assetId].join(" -> ");
+      cycleIssues.add(`Asset dependency cycle detected: ${cyclePath}`);
+      return;
+    }
+
+    visitState.set(assetId, "visiting");
+    visitStack.push(assetId);
+
+    const currentAsset = assetMap.get(assetId);
+    for (const dependency of currentAsset?.dependencies || []) {
+      if (!assetMap.has(dependency.id)) {
+        continue;
+      }
+
+      visit(dependency.id);
+    }
+
+    visitStack.pop();
+    visitState.set(assetId, "done");
+  }
+
+  visit(asset.id);
 }
 
 function stripRenderedContent(asset) {
@@ -514,6 +647,8 @@ export async function validateWorkspace() {
   const issues = [];
   const workspace = await loadWorkspace();
   const assets = await listAssets();
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
+  const dependencyCycleIssues = new Set();
   let availableTargets = new Set();
 
   if (!isNonEmptyString(workspace.name)) {
@@ -664,6 +799,8 @@ export async function validateWorkspace() {
       compatibilityTargets.add(target);
     }
 
+    validateAssetDependencies(asset, assetMap, issues, dependencyCycleIssues);
+
     const assetDir = resolveAssetPath(asset.kind, asset.id);
     const contentPath = path.join(assetDir, asset.content.entry);
     if (!(await pathExists(contentPath))) {
@@ -741,6 +878,8 @@ export async function validateWorkspace() {
       issues.push(`Asset current version must match latest history entry: ${asset.id} -> ${asset.version}`);
     }
   }
+
+  issues.push(...[...dependencyCycleIssues].sort((left, right) => left.localeCompare(right)));
 
   return {
     valid: issues.length === 0,

@@ -38,6 +38,13 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Workspace is valid/);
 
+    result = runCli(workspaceDir, ["validate", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const validationResult = JSON.parse(result.stdout);
+    assert.equal(validationResult.valid, true);
+    assert.equal(validationResult.assetCount, 3);
+    assert.deepEqual(validationResult.issues, []);
+
     result = runCli(workspaceDir, ["list"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Assets: 3/);
@@ -45,6 +52,23 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /- agent\.harness-manager @ 0\.1\.0/);
     assert.match(result.stdout, /skills \(1\)/);
     assert.match(result.stdout, /- skill\.prompt-authoring @ 1\.0\.0/);
+
+    result = runCli(workspaceDir, ["list", "--group-by", "owner"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /owner: team-harness \(3\)/);
+
+    result = runCli(workspaceDir, ["list", "--kind", "skill", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const listedSkills = JSON.parse(result.stdout);
+    assert.equal(listedSkills.workspace.name, "Harness");
+    assert.equal(listedSkills.filters.kind, "skill");
+    assert.equal(listedSkills.groupBy, "kind");
+    assert.equal(listedSkills.assetCount, 1);
+    assert.equal(listedSkills.assets.length, 1);
+    assert.equal(listedSkills.groups.length, 1);
+    assert.equal(listedSkills.groups[0].key, "skill");
+    assert.equal(listedSkills.assets[0].id, "skill.prompt-authoring");
+    assert.equal("renderedContent" in listedSkills.assets[0], false);
 
     result = runCli(workspaceDir, ["targets"]);
     assert.equal(result.status, 0, result.stderr);
@@ -57,6 +81,15 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(shownAsset.id, "skill.prompt-authoring");
     assert.match(shownAsset.renderedContent, /Write prompts that are:/);
 
+    result = runCli(workspaceDir, ["show", "agent", "agent.harness-manager"]);
+    assert.equal(result.status, 0, result.stderr);
+    const shownAgent = JSON.parse(result.stdout);
+    assert.equal(shownAgent.dependencies.length, 2);
+    assert.deepEqual(
+      shownAgent.dependencies.map((dependency) => `${dependency.kind}:${dependency.id}`),
+      ["skill:skill.prompt-authoring", "instruction:instruction.repository-guardrails"]
+    );
+
     result = runCli(workspaceDir, ["history", "skill", "skill.prompt-authoring"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /History: skill\.prompt-authoring/);
@@ -64,6 +97,14 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /Versions: 1/);
     assert.match(result.stdout, /\* 1\.0\.0 \| 2026-06-06 \| Initial skill content\./);
     assert.match(result.stdout, /snapshot: \.snapshots\/1\.0\.0/);
+
+    result = runCli(workspaceDir, ["history", "skill", "skill.prompt-authoring", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const historyResult = JSON.parse(result.stdout);
+    assert.equal(historyResult.id, "skill.prompt-authoring");
+    assert.equal(historyResult.currentVersion, "1.0.0");
+    assert.equal(historyResult.history.length, 1);
+    assert.equal(historyResult.history[0].snapshot, ".snapshots/1.0.0");
 
     result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--metadata"]);
     assert.equal(result.status, 0, result.stderr);
@@ -89,6 +130,25 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Created \[skill\] skill\.release-checklist @ 1\.0\.0/);
 
+    result = runCli(workspaceDir, ["list", "--owner", "team-harness", "--tag", "release", "--target", "openai-codex", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const filteredAssets = JSON.parse(result.stdout);
+    assert.equal(filteredAssets.assetCount, 1);
+    assert.equal(filteredAssets.assets[0].id, "skill.release-checklist");
+    assert.deepEqual(filteredAssets.assets[0].tags, ["release", "quality"]);
+    assert.match(filteredAssets.assets[0].compatibility.targets.join(","), /openai-codex/);
+
+    result = runCli(workspaceDir, ["list", "--group-by", "target", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const groupedByTarget = JSON.parse(result.stdout);
+    assert.equal(groupedByTarget.groupBy, "target");
+    assert.equal(groupedByTarget.assetCount, 4);
+    assert.equal(groupedByTarget.groups.length, 3);
+    assert.equal(groupedByTarget.groups[0].key, "claude-code");
+    assert.equal(groupedByTarget.groups[0].assetCount, 4);
+    assert.equal(groupedByTarget.groups[1].key, "generic");
+    assert.equal(groupedByTarget.groups[2].key, "openai-codex");
+
     result = runCli(workspaceDir, ["bump-version", "skill", "skill.release-checklist", "1.1.0", "--note", "Expanded rollout checks"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Bumped skill\.release-checklist from 1\.0\.0 to 1\.1\.0/);
@@ -109,9 +169,25 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /Content \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Expanded rollout checks/);
 
+    result = runCli(workspaceDir, ["diff", "skill", "skill.release-checklist", "1.0.0", "1.1.0", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const diffResult = JSON.parse(result.stdout);
+    assert.equal(diffResult.id, "skill.release-checklist");
+    assert.equal(diffResult.fromVersion, "1.0.0");
+    assert.equal(diffResult.toVersion, "1.1.0");
+    assert.equal(diffResult.hasContentChanges, false);
+    assert.deepEqual(diffResult.metadataFieldsChanged, ["history", "version"]);
+
     result = runCli(workspaceDir, ["export"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Target: generic/);
+
+    result = runCli(workspaceDir, ["export", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const defaultExportResult = JSON.parse(result.stdout);
+    assert.equal(defaultExportResult.target, "generic");
+    assert.equal(defaultExportResult.assetCount, 4);
+    assert.match(defaultExportResult.outputPath, /exports\/generic\.json/);
 
     result = runCli(workspaceDir, ["export", "generic"]);
     assert.equal(result.status, 0, result.stderr);
@@ -140,6 +216,36 @@ test("show rejects mutually exclusive metadata and content flags", () => {
     result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--metadata", "--content"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Choose either --metadata or --content, not both\./);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("list rejects unsupported kinds", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["list", "--kind", "workflow"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Unsupported asset kind: workflow/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("list rejects unsupported group-by values", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["list", "--group-by", "version"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Unsupported list group: version/);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
@@ -267,6 +373,70 @@ test("validate catches broken history and snapshot consistency", () => {
     assert.match(result.stdout, /Asset compatibility\.targets contains duplicates: skill\.prompt-authoring -> generic/);
     assert.match(result.stdout, /History entry version must be unique: skill\.prompt-authoring -> 1\.0\.0/);
     assert.match(result.stdout, /History entry snapshot path must match version: skill\.prompt-authoring -> 1\.0\.0/);
+
+    result = runCli(workspaceDir, ["validate", "--json"]);
+    assert.equal(result.status, 1);
+    const failedValidationResult = JSON.parse(result.stdout);
+    assert.equal(failedValidationResult.valid, false);
+    assert.ok(failedValidationResult.issueCount >= 4);
+    assert.ok(
+      failedValidationResult.issues.includes("Asset current version must match latest history entry: skill.prompt-authoring -> 1.1.0")
+    );
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("validate catches broken dependency definitions", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const agentPath = path.join(workspaceDir, "assets", "agents", "agent.harness-manager", "asset.json");
+    const skillPath = path.join(workspaceDir, "assets", "skills", "skill.prompt-authoring", "asset.json");
+
+    const agent = readJson(agentPath);
+    const skill = readJson(skillPath);
+
+    agent.dependencies = [
+      { kind: "skill", id: "skill.prompt-authoring", required: true },
+      { kind: "skill", id: "skill.prompt-authoring", required: true },
+      { kind: "instruction", id: "instruction.missing-guardrails", required: true }
+    ];
+    agent.compatibility.targets = ["generic", "openai-codex", "claude-code"];
+
+    skill.compatibility.targets = ["generic"];
+    skill.dependencies = [{ kind: "agent", id: "agent.harness-manager", required: true }];
+
+    writeFileSync(agentPath, `${JSON.stringify(agent, null, 2)}\n`, "utf8");
+    writeFileSync(skillPath, `${JSON.stringify(skill, null, 2)}\n`, "utf8");
+
+    result = runCli(workspaceDir, ["validate", "--json"]);
+    assert.equal(result.status, 1);
+    const failedValidationResult = JSON.parse(result.stdout);
+    assert.equal(failedValidationResult.valid, false);
+    assert.ok(
+      failedValidationResult.issues.includes(
+        "Asset dependencies contain duplicates: agent.harness-manager -> skill:skill.prompt-authoring"
+      )
+    );
+    assert.ok(
+      failedValidationResult.issues.includes(
+        "Asset dependency is missing: agent.harness-manager -> instruction:instruction.missing-guardrails"
+      )
+    );
+    assert.ok(
+      failedValidationResult.issues.includes(
+        "Asset dependency target mismatch: agent.harness-manager -> skill:skill.prompt-authoring missing target openai-codex"
+      )
+    );
+    assert.ok(
+      failedValidationResult.issues.includes(
+        "Asset dependency cycle detected: agent.harness-manager -> skill.prompt-authoring -> agent.harness-manager"
+      )
+    );
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
