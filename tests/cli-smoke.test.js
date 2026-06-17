@@ -28,7 +28,7 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
   try {
     let result = runCli(workspaceDir, ["--version"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /harness 0\.1\.1/);
+    assert.match(result.stdout, /harness 0\.2\.0/);
 
     result = runCli(workspaceDir, ["init"]);
     assert.equal(result.status, 0, result.stderr);
