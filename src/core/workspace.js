@@ -587,6 +587,38 @@ export async function addAssetDependency(kind, assetId, dependencyKind, dependen
   };
 }
 
+export async function removeAssetDependency(kind, assetId, dependencyKind, dependencyId) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+  assertSupportedKind(dependencyKind);
+  assertValidAssetId(dependencyKind, dependencyId);
+
+  const asset = await loadAsset(kind, assetId);
+  const existingDependencies = asset.dependencies || [];
+  const nextDependencies = existingDependencies.filter((dependency) => dependency.kind !== dependencyKind || dependency.id !== dependencyId);
+
+  if (nextDependencies.length === existingDependencies.length) {
+    throw new Error(`Asset dependency not found: ${assetId} -> ${dependencyKind}:${dependencyId}`);
+  }
+
+  const updatedMetadata = {
+    ...stripRenderedContent(asset),
+    dependencies: nextDependencies
+  };
+
+  await saveAssetFiles(kind, assetId, updatedMetadata, asset.renderedContent);
+
+  return {
+    kind,
+    id: assetId,
+    dependency: {
+      kind: dependencyKind,
+      id: dependencyId
+    },
+    dependencyCount: nextDependencies.length
+  };
+}
+
 export async function bumpAssetVersion(kind, assetId, nextVersion, options = {}) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

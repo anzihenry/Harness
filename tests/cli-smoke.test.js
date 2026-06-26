@@ -440,6 +440,37 @@ test("add-dependency rejects missing dependencies and cycles", () => {
   }
 });
 
+test("remove-dependency updates dependency graphs and rejects missing edges", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["remove-dependency", "agent", "agent.harness-manager", "skill", "skill.prompt-authoring"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Removed dependency from \[agent\] agent\.harness-manager/);
+    assert.match(result.stdout, /Dependency: skill:skill\.prompt-authoring/);
+    assert.match(result.stdout, /Dependencies: 1/);
+
+    result = runCli(workspaceDir, ["show", "agent", "agent.harness-manager", "--resolved"]);
+    assert.equal(result.status, 0, result.stderr);
+    const resolvedAgent = JSON.parse(result.stdout);
+    assert.equal(resolvedAgent.summary.directDependencyCount, 1);
+    assert.equal(resolvedAgent.summary.resolvedAssetCount, 2);
+    assert.deepEqual(
+      resolvedAgent.resolvedDependencies.map((dependency) => `${dependency.kind}:${dependency.id}`),
+      ["instruction:instruction.repository-guardrails"]
+    );
+
+    result = runCli(workspaceDir, ["remove-dependency", "agent", "agent.harness-manager", "skill", "skill.prompt-authoring"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Asset dependency not found: agent\.harness-manager -> skill:skill\.prompt-authoring/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 

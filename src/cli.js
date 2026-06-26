@@ -13,6 +13,7 @@ import {
   listAssets,
   loadWorkspace,
   packWorkspace,
+  removeAssetDependency,
   showResolvedAsset,
   showAsset,
   showAssetVersion,
@@ -63,6 +64,7 @@ Usage:
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
   harness set <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b]
   harness add-dependency <kind> <id> <dependency-kind> <dependency-id> [--optional]
+  harness remove-dependency <kind> <id> <dependency-kind> <dependency-id>
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness history <kind> <id> [--json]
@@ -81,6 +83,7 @@ Examples:
   harness new skill skill.agent-review --owner team-harness --tags review,agent
   harness set skill skill.agent-review --owner team-platform --tags review,quality
   harness add-dependency agent agent.harness-manager skill skill.prompt-authoring
+  harness remove-dependency agent agent.harness-manager skill skill.prompt-authoring
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
   harness history skill skill.prompt-authoring --json
@@ -329,6 +332,20 @@ async function main() {
       const result = await addAssetDependency(kind, assetId, dependencyKind, dependencyId, flags);
       console.log(`Added dependency to [${result.kind}] ${result.id}`);
       console.log(`Dependency: ${result.dependency.kind}:${result.dependency.id} (${result.dependency.required ? "required" : "optional"})`);
+      console.log(`Dependencies: ${result.dependencyCount}`);
+      return;
+    }
+
+    case "remove-dependency": {
+      const { positionals } = parseFlags(args);
+      const [kind, assetId, dependencyKind, dependencyId] = positionals;
+      if (!kind || !assetId || !dependencyKind || !dependencyId) {
+        throw new Error("Usage: harness remove-dependency <kind> <id> <dependency-kind> <dependency-id>");
+      }
+
+      const result = await removeAssetDependency(kind, assetId, dependencyKind, dependencyId);
+      console.log(`Removed dependency from [${result.kind}] ${result.id}`);
+      console.log(`Dependency: ${result.dependency.kind}:${result.dependency.id}`);
       console.log(`Dependencies: ${result.dependencyCount}`);
       return;
     }

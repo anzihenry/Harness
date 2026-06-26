@@ -115,6 +115,7 @@ node ./src/cli.js validate --json
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
 node ./src/cli.js set skill skill.agent-review --owner team-platform --tags review,quality
 node ./src/cli.js add-dependency agent agent.harness-manager skill skill.prompt-authoring
+node ./src/cli.js remove-dependency agent agent.harness-manager skill skill.prompt-authoring
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js history skill skill.agent-review --json
@@ -208,6 +209,14 @@ node ./src/cli.js set skill skill.agent-review --targets generic,openai-codex
 ```bash
 node ./src/cli.js add-dependency agent agent.harness-manager skill skill.prompt-authoring
 node ./src/cli.js add-dependency agent agent.harness-manager instruction instruction.repository-guardrails --optional
+```
+
+### `remove-dependency <kind> <id> <dependency-kind> <dependency-id>`
+
+从资产 metadata 中移除指定依赖关系。依赖不存在时会返回清晰错误。
+
+```bash
+node ./src/cli.js remove-dependency agent agent.harness-manager skill skill.prompt-authoring
 ```
 
 ### `bump-version <kind> <id> <version>`
