@@ -471,6 +471,72 @@ test("remove-dependency updates dependency graphs and rejects missing edges", ()
   }
 });
 
+test("clone creates a new asset with copied content, dependencies, and its own snapshot", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, [
+      "init"
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, [
+      "clone",
+      "agent",
+      "agent.harness-manager",
+      "agent.platform-manager",
+      "--name",
+      "Platform Manager",
+      "--version",
+      "0.2.0",
+      "--note",
+      "Created platform manager variant"
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Cloned \[agent\] agent\.harness-manager -> agent\.platform-manager @ 0\.2\.0/);
+
+    result = runCli(workspaceDir, ["show", "agent", "agent.platform-manager"]);
+    assert.equal(result.status, 0, result.stderr);
+    const clonedAgent = JSON.parse(result.stdout);
+    assert.equal(clonedAgent.id, "agent.platform-manager");
+    assert.equal(clonedAgent.name, "Platform Manager");
+    assert.equal(clonedAgent.version, "0.2.0");
+    assert.deepEqual(
+      clonedAgent.dependencies.map((dependency) => `${dependency.kind}:${dependency.id}`),
+      ["skill:skill.prompt-authoring", "instruction:instruction.repository-guardrails"]
+    );
+    assert.equal(clonedAgent.history.length, 1);
+    assert.equal(clonedAgent.history[0].notes, "Created platform manager variant");
+    assert.match(clonedAgent.renderedContent, /You manage agent assets/);
+
+    result = runCli(workspaceDir, ["show", "agent", "agent.platform-manager", "0.2.0"]);
+    assert.equal(result.status, 0, result.stderr);
+    const clonedSnapshot = JSON.parse(result.stdout);
+    assert.equal(clonedSnapshot.id, "agent.platform-manager");
+    assert.equal(clonedSnapshot.version, "0.2.0");
+
+    result = runCli(workspaceDir, ["validate"]);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("clone rejects an existing target asset", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["clone", "skill", "skill.prompt-authoring", "skill.prompt-authoring"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Asset already exists: skill\.prompt-authoring/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 

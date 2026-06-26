@@ -460,6 +460,48 @@ export async function createAsset(kind, assetId, options = {}) {
   };
 }
 
+export async function cloneAsset(kind, sourceId, targetId, options = {}) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, sourceId);
+  assertValidAssetId(kind, targetId);
+
+  const targetDir = resolveAssetPath(kind, targetId);
+  if (await pathExists(targetDir)) {
+    throw new Error(`Asset already exists: ${targetId}`);
+  }
+
+  const sourceAsset = await loadAsset(kind, sourceId);
+  const version = options.version || sourceAsset.version;
+  if (!isSemver(version)) {
+    throw new Error(`Invalid version: ${version}`);
+  }
+
+  const metadata = {
+    ...stripRenderedContent(sourceAsset),
+    id: targetId,
+    name: options.name || titleFromId(targetId),
+    version,
+    history: [
+      {
+        version,
+        date: currentDate(),
+        notes: options.note || `Cloned from ${sourceId}.`,
+        snapshot: `/.snapshots/${version}`.slice(1)
+      }
+    ]
+  };
+
+  await saveAssetFiles(kind, targetId, metadata, sourceAsset.renderedContent);
+  await writeSnapshot(kind, targetId, version, metadata, sourceAsset.renderedContent);
+
+  return {
+    kind,
+    sourceId,
+    id: targetId,
+    version
+  };
+}
+
 export async function updateAssetMetadata(kind, assetId, options = {}) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

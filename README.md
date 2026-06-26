@@ -113,6 +113,7 @@ node ./src/cli.js list --group-by owner
 node ./src/cli.js targets
 node ./src/cli.js validate --json
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
+node ./src/cli.js clone skill skill.prompt-authoring skill.prompt-authoring-copy --name "Prompt Authoring Copy"
 node ./src/cli.js set skill skill.agent-review --owner team-platform --tags review,quality
 node ./src/cli.js add-dependency skill skill.agent-review instruction instruction.repository-guardrails --optional
 node ./src/cli.js remove-dependency skill skill.agent-review instruction instruction.repository-guardrails
@@ -190,6 +191,15 @@ node ./src/cli.js new skill skill.agent-review \
   --description "Review checklist for agent changes" \
   --owner team-harness \
   --tags review,quality
+```
+
+### `clone <kind> <source-id> <target-id>`
+
+复制同类型资产，保留源资产的正文、tags、owner、compatibility 和 dependencies，并为目标资产创建新的 `id`、`name`、`version`、history 和首个 snapshot。
+
+```bash
+node ./src/cli.js clone skill skill.prompt-authoring skill.prompt-authoring-copy
+node ./src/cli.js clone agent agent.harness-manager agent.platform-manager --name "Platform Manager" --version 0.1.0
 ```
 
 ### `set <kind> <id>`

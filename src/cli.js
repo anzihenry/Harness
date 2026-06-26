@@ -5,6 +5,7 @@ import { listAdapterTargets } from "./core/adapters.js";
 import {
   addAssetDependency,
   bumpAssetVersion,
+  cloneAsset,
   createAsset,
   diffAsset,
   exportWorkspace,
@@ -62,6 +63,7 @@ Usage:
   harness targets
   harness validate [--json]
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
+  harness clone <kind> <source-id> <target-id> [--name <name>] [--version x.y.z] [--note <text>]
   harness set <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b]
   harness add-dependency <kind> <id> <dependency-kind> <dependency-id> [--optional]
   harness remove-dependency <kind> <id> <dependency-kind> <dependency-id>
@@ -81,9 +83,10 @@ Examples:
   harness targets
   harness validate --json
   harness new skill skill.agent-review --owner team-harness --tags review,agent
+  harness clone skill skill.prompt-authoring skill.prompt-authoring-copy --name "Prompt Authoring Copy"
   harness set skill skill.agent-review --owner team-platform --tags review,quality
-  harness add-dependency agent agent.harness-manager skill skill.prompt-authoring
-  harness remove-dependency agent agent.harness-manager skill skill.prompt-authoring
+  harness add-dependency skill skill.agent-review instruction instruction.repository-guardrails --optional
+  harness remove-dependency skill skill.agent-review instruction instruction.repository-guardrails
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
   harness history skill skill.prompt-authoring --json
@@ -306,6 +309,18 @@ async function main() {
 
       const result = await createAsset(kind, assetId, flags);
       console.log(`Created [${result.kind}] ${result.id} @ ${result.version}`);
+      return;
+    }
+
+    case "clone": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, sourceId, targetId] = positionals;
+      if (!kind || !sourceId || !targetId) {
+        throw new Error("Usage: harness clone <kind> <source-id> <target-id> [--name <name>] [--version x.y.z] [--note <text>]");
+      }
+
+      const result = await cloneAsset(kind, sourceId, targetId, flags);
+      console.log(`Cloned [${result.kind}] ${result.sourceId} -> ${result.id} @ ${result.version}`);
       return;
     }
 
