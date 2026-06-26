@@ -349,6 +349,21 @@ test("list rejects unsupported group-by values", () => {
   }
 });
 
+test("list rejects unsupported status values", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["list", "--status", "retired"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Unsupported asset status: retired/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("set requires at least one metadata update", () => {
   const workspaceDir = createWorkspaceDir();
 
@@ -532,6 +547,56 @@ test("clone rejects an existing target asset", () => {
     result = runCli(workspaceDir, ["clone", "skill", "skill.prompt-authoring", "skill.prompt-authoring"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Asset already exists: skill\.prompt-authoring/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("archive marks unused assets and supports status filtering", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["clone", "skill", "skill.prompt-authoring", "skill.prompt-authoring-copy"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["archive", "skill", "skill.prompt-authoring-copy", "--reason", "Folded into prompt-authoring"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Archived \[skill\] skill\.prompt-authoring-copy/);
+    assert.match(result.stdout, /Status: archived/);
+    assert.match(result.stdout, /Reason: Folded into prompt-authoring/);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring-copy", "--metadata"]);
+    assert.equal(result.status, 0, result.stderr);
+    const archivedAsset = JSON.parse(result.stdout);
+    assert.equal(archivedAsset.status, "archived");
+    assert.equal(archivedAsset.archive.reason, "Folded into prompt-authoring");
+
+    result = runCli(workspaceDir, ["list", "--status", "archived", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const archivedList = JSON.parse(result.stdout);
+    assert.equal(archivedList.assetCount, 1);
+    assert.equal(archivedList.assets[0].id, "skill.prompt-authoring-copy");
+
+    result = runCli(workspaceDir, ["validate"]);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("archive blocks assets that are still depended on", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["archive", "skill", "skill.prompt-authoring", "--reason", "No longer used"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Cannot archive skill\.prompt-authoring; it is still required by agent\.harness-manager\./);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }

@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { listAdapterTargets } from "./core/adapters.js";
 import {
   addAssetDependency,
+  archiveAsset,
   bumpAssetVersion,
   cloneAsset,
   createAsset,
@@ -27,6 +28,7 @@ const require = createRequire(import.meta.url);
 const { version: cliVersion } = require("../package.json");
 const supportedKinds = ["agent", "skill", "instruction"];
 const supportedListGroupBys = ["kind", "owner", "target"];
+const supportedListStatuses = ["active", "archived"];
 
 function parseFlags(args) {
   const flags = {};
@@ -59,11 +61,12 @@ function printHelp() {
 Usage:
   harness --version
   harness init [--force]
-  harness list [--kind <kind>] [--tag <tag>] [--owner <owner>] [--target <target>] [--group-by <field>] [--json]
+  harness list [--kind <kind>] [--tag <tag>] [--owner <owner>] [--status active|archived] [--target <target>] [--group-by <field>] [--json]
   harness targets
   harness validate [--json]
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
   harness clone <kind> <source-id> <target-id> [--name <name>] [--version x.y.z] [--note <text>]
+  harness archive <kind> <id> [--reason <text>]
   harness set <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b]
   harness add-dependency <kind> <id> <dependency-kind> <dependency-id> [--optional]
   harness remove-dependency <kind> <id> <dependency-kind> <dependency-id>
@@ -80,10 +83,12 @@ Examples:
   harness list
   harness list --kind skill --json
   harness list --group-by owner
+  harness list --status archived
   harness targets
   harness validate --json
   harness new skill skill.agent-review --owner team-harness --tags review,agent
   harness clone skill skill.prompt-authoring skill.prompt-authoring-copy --name "Prompt Authoring Copy"
+  harness archive skill skill.prompt-authoring-copy --reason "Folded into prompt-authoring"
   harness set skill skill.agent-review --owner team-platform --tags review,quality
   harness add-dependency skill skill.agent-review instruction instruction.repository-guardrails --optional
   harness remove-dependency skill skill.agent-review instruction instruction.repository-guardrails
@@ -144,6 +149,10 @@ function assertListFilters(flags) {
   if (flags["group-by"] && !supportedListGroupBys.includes(flags["group-by"])) {
     throw new Error(`Unsupported list group: ${flags["group-by"]}. Supported groups: ${supportedListGroupBys.join(", ")}`);
   }
+
+  if (flags.status && !supportedListStatuses.includes(flags.status)) {
+    throw new Error(`Unsupported asset status: ${flags.status}. Supported statuses: ${supportedListStatuses.join(", ")}`);
+  }
 }
 
 function createListFilters(flags) {
@@ -153,6 +162,7 @@ function createListFilters(flags) {
     kind: flags.kind,
     tag: flags.tag,
     owner: flags.owner,
+    status: flags.status,
     target: flags.target
   };
 }
@@ -321,6 +331,20 @@ async function main() {
 
       const result = await cloneAsset(kind, sourceId, targetId, flags);
       console.log(`Cloned [${result.kind}] ${result.sourceId} -> ${result.id} @ ${result.version}`);
+      return;
+    }
+
+    case "archive": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId] = positionals;
+      if (!kind || !assetId) {
+        throw new Error("Usage: harness archive <kind> <id> [--reason <text>]");
+      }
+
+      const result = await archiveAsset(kind, assetId, flags);
+      console.log(`Archived [${result.kind}] ${result.id}`);
+      console.log(`Status: ${result.status}`);
+      console.log(`Reason: ${result.reason}`);
       return;
     }
 

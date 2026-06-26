@@ -4,6 +4,7 @@
   "kind": "instruction",
   "version": "1.0.0",
   "description": "Operational rules for safe repository changes.",
+  "status": "active",
   "tags": [
     "repo",
     "safety"

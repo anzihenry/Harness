@@ -4,6 +4,7 @@
   "kind": "agent",
   "version": "0.1.0",
   "description": "Coordinates asset governance across agent ecosystems.",
+  "status": "active",
   "tags": [
     "manager",
     "governance"

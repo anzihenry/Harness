@@ -110,10 +110,12 @@ node ./src/cli.js init --force
 node ./src/cli.js list
 node ./src/cli.js list --kind skill --json
 node ./src/cli.js list --group-by owner
+node ./src/cli.js list --status archived
 node ./src/cli.js targets
 node ./src/cli.js validate --json
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
 node ./src/cli.js clone skill skill.prompt-authoring skill.prompt-authoring-copy --name "Prompt Authoring Copy"
+node ./src/cli.js archive skill skill.prompt-authoring-copy --reason "Folded into prompt-authoring"
 node ./src/cli.js set skill skill.agent-review --owner team-platform --tags review,quality
 node ./src/cli.js add-dependency skill skill.agent-review instruction instruction.repository-guardrails --optional
 node ./src/cli.js remove-dependency skill skill.agent-review instruction instruction.repository-guardrails
@@ -154,12 +156,13 @@ node ./src/cli.js init --force
 
 ### `list`
 
-列出当前工作区中的资产，并支持按类型、标签、归属人和 target 过滤；传入 `--group-by kind|owner|target` 时可切换分组方式；传入 `--json` 时返回机器可读结构。
+列出当前工作区中的资产，并支持按类型、标签、归属人、状态和 target 过滤；传入 `--group-by kind|owner|target` 时可切换分组方式；传入 `--json` 时返回机器可读结构。
 
 ```bash
 node ./src/cli.js list
 node ./src/cli.js list --kind skill
 node ./src/cli.js list --tag review --owner team-harness
+node ./src/cli.js list --status archived
 node ./src/cli.js list --group-by owner
 node ./src/cli.js list --target openai-codex --json
 ```
@@ -200,6 +203,15 @@ node ./src/cli.js new skill skill.agent-review \
 ```bash
 node ./src/cli.js clone skill skill.prompt-authoring skill.prompt-authoring-copy
 node ./src/cli.js clone agent agent.harness-manager agent.platform-manager --name "Platform Manager" --version 0.1.0
+```
+
+### `archive <kind> <id>`
+
+把资产标记为 `status: "archived"`，并记录归档原因。若资产仍被其他资产依赖，命令会阻断归档，避免破坏已有组合关系。默认 `list` 仍会显示归档资产；可以用 `list --status archived` 只查看归档资产。
+
+```bash
+node ./src/cli.js archive skill skill.prompt-authoring-copy --reason "Folded into prompt-authoring"
+node ./src/cli.js list --status archived
 ```
 
 ### `set <kind> <id>`

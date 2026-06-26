@@ -4,6 +4,7 @@
   "kind": "skill",
   "version": "1.0.0",
   "description": "Reusable guidance for writing stable prompts.",
+  "status": "active",
   "tags": [
     "prompt",
     "quality"

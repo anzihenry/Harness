@@ -36,6 +36,7 @@ const sampleAssets = [
       kind: "agent",
       version: "0.1.0",
       description: "Coordinates asset governance across agent ecosystems.",
+      status: "active",
       tags: ["manager", "governance"],
       owner: "team-harness",
       compatibility: {
@@ -84,6 +85,7 @@ Responsibilities:
       kind: "skill",
       version: "1.0.0",
       description: "Reusable guidance for writing stable prompts.",
+      status: "active",
       tags: ["prompt", "quality"],
       owner: "team-harness",
       compatibility: {
@@ -120,6 +122,7 @@ Write prompts that are:
       kind: "instruction",
       version: "1.0.0",
       description: "Operational rules for safe repository changes.",
+      status: "active",
       tags: ["repo", "safety"],
       owner: "team-harness",
       compatibility: {
@@ -147,6 +150,7 @@ Write prompts that are:
 ];
 
 const assetIdSegmentPattern = "[a-z0-9]+(?:-[a-z0-9]+)*";
+const supportedAssetStatuses = ["active", "archived"];
 
 function currentDate() {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -346,6 +350,10 @@ function matchesAssetFilters(asset, filters = {}) {
     return false;
   }
 
+  if (filters.status && (asset.status || "active") !== filters.status) {
+    return false;
+  }
+
   if (filters.target && !asset.compatibility?.targets?.includes(filters.target)) {
     return false;
   }
@@ -430,6 +438,7 @@ export async function createAsset(kind, assetId, options = {}) {
     kind,
     version,
     description: options.description || "",
+    status: "active",
     tags,
     owner: options.owner || "unknown",
     compatibility: {
@@ -481,6 +490,7 @@ export async function cloneAsset(kind, sourceId, targetId, options = {}) {
     id: targetId,
     name: options.name || titleFromId(targetId),
     version,
+    status: "active",
     history: [
       {
         version,
@@ -658,6 +668,42 @@ export async function removeAssetDependency(kind, assetId, dependencyKind, depen
       id: dependencyId
     },
     dependencyCount: nextDependencies.length
+  };
+}
+
+export async function archiveAsset(kind, assetId, options = {}) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+
+  const asset = await loadAsset(kind, assetId);
+  if ((asset.status || "active") === "archived") {
+    throw new Error(`Asset is already archived: ${assetId}`);
+  }
+
+  const assets = await listAssets();
+  const blockingDependent = assets.find((candidate) =>
+    (candidate.dependencies || []).some((dependency) => dependency.kind === kind && dependency.id === assetId)
+  );
+  if (blockingDependent) {
+    throw new Error(`Cannot archive ${assetId}; it is still required by ${blockingDependent.id}.`);
+  }
+
+  const updatedMetadata = {
+    ...stripRenderedContent(asset),
+    status: "archived",
+    archive: {
+      date: currentDate(),
+      reason: options.reason || "Archived by Harness."
+    }
+  };
+
+  await saveAssetFiles(kind, assetId, updatedMetadata, asset.renderedContent);
+
+  return {
+    kind,
+    id: assetId,
+    status: updatedMetadata.status,
+    reason: updatedMetadata.archive.reason
   };
 }
 
@@ -1176,6 +1222,24 @@ export async function validateWorkspace() {
 
     if (!isNonEmptyString(asset.description)) {
       issues.push(`Asset description is required: ${asset.id}`);
+    }
+
+    if (asset.status !== undefined && !supportedAssetStatuses.includes(asset.status)) {
+      issues.push(`Asset status is unsupported: ${asset.id} -> ${asset.status}`);
+    }
+
+    if (asset.archive !== undefined) {
+      if (asset.status !== "archived") {
+        issues.push(`Asset archive metadata requires archived status: ${asset.id}`);
+      }
+
+      if (!isNonEmptyString(asset.archive.date)) {
+        issues.push(`Asset archive date is required: ${asset.id}`);
+      }
+
+      if (!isNonEmptyString(asset.archive.reason)) {
+        issues.push(`Asset archive reason is required: ${asset.id}`);
+      }
     }
 
     if (!isNonEmptyString(asset.owner)) {
