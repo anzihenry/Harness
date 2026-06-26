@@ -16,6 +16,18 @@
       "claude-code"
     ]
   },
+  "dependencies": [
+    {
+      "kind": "skill",
+      "id": "skill.prompt-authoring",
+      "required": true
+    },
+    {
+      "kind": "instruction",
+      "id": "instruction.repository-guardrails",
+      "required": true
+    }
+  ],
   "content": {
     "entry": "content.md"
   },
