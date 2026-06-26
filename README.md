@@ -334,7 +334,7 @@ node ./src/cli.js export claude-code
 
 ### `pack [target]`
 
-生成面向交付的 bundle 目录，而不只是单个 target 的导出结果。`pack` 需要 `--entry <kind:id>`，并会写出 `manifest.json`、`assets.json` 和 `rendered/<target>.json`。如果再加 `--include-dependencies`，会把依赖闭包一并打包。
+生成面向交付的 bundle 目录，而不只是单个 target 的导出结果。`pack` 需要 `--entry <kind:id>`，并会写出 `manifest.json`、`assets.json`、`rendered/<target>.json` 和 `checksums.json`。如果再加 `--include-dependencies`，会把依赖闭包一并打包。
 
 ```bash
 node ./src/cli.js pack generic --entry agent:agent.harness-manager

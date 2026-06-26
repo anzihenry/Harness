@@ -1,4 +1,5 @@
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   assetsRoot,
@@ -293,6 +294,14 @@ function getWorkspaceBundleDirectory(workspace) {
 
 function currentTimestamp() {
   return new Date().toISOString();
+}
+
+function sha256(data) {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+function digestJson(data) {
+  return sha256(stableStringify(data));
 }
 
 export async function initWorkspace(options = {}) {
@@ -1600,16 +1609,39 @@ export async function packWorkspace(target, options = {}) {
     includeDependencies,
     assets: selection.assets.map(toBundleAsset)
   };
+  const renderedPath = `rendered/${resolvedTarget}.json`;
+  const payloadDigests = {
+    "assets.json": digestJson(assetsDocument),
+    [renderedPath]: digestJson(renderedOutput)
+  };
+  manifest.digest = {
+    algorithm: "sha256",
+    files: payloadDigests
+  };
+
+  const manifestForDigest = {
+    ...manifest,
+    generatedAt: "<excluded-from-digest>"
+  };
+  const checksumsDocument = {
+    algorithm: "sha256",
+    files: {
+      "manifest.json": digestJson(manifestForDigest),
+      ...payloadDigests
+    }
+  };
 
   await writeJson(path.join(bundleDirectory, "manifest.json"), manifest);
   await writeJson(path.join(bundleDirectory, "assets.json"), assetsDocument);
-  await writeJson(path.join(bundleDirectory, "rendered", `${resolvedTarget}.json`), renderedOutput);
+  await writeJson(path.join(bundleDirectory, renderedPath), renderedOutput);
+  await writeJson(path.join(bundleDirectory, "checksums.json"), checksumsDocument);
 
   return {
     bundlePath: bundleDirectory,
     manifestPath: path.join(bundleDirectory, "manifest.json"),
     assetsPath: path.join(bundleDirectory, "assets.json"),
-    renderedPath: path.join(bundleDirectory, "rendered", `${resolvedTarget}.json`),
+    renderedPath: path.join(bundleDirectory, renderedPath),
+    checksumsPath: path.join(bundleDirectory, "checksums.json"),
     target: resolvedTarget,
     entry: `${entry.kind}:${entry.id}`,
     includeDependencies,

@@ -655,6 +655,7 @@ async function main() {
       console.log(`Included dependencies: ${result.includeDependencies ? "yes" : "no"}`);
       console.log(`Bundle: ${result.bundlePath}`);
       console.log(`Manifest: ${result.manifestPath}`);
+      console.log(`Checksums: ${result.checksumsPath}`);
       return;
     }
 

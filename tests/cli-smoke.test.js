@@ -275,12 +275,16 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(packResult.includeDependencies, true);
     assert.equal(packResult.assetCount, 3);
     assert.match(packResult.bundlePath, /releases\/agent\.harness-manager-generic/);
+    assert.match(packResult.checksumsPath, /releases\/agent\.harness-manager-generic\/checksums\.json/);
 
     const manifest = readJson(packResult.manifestPath);
     assert.equal(manifest.target, "generic");
     assert.equal(manifest.entryAsset.id, "agent.harness-manager");
     assert.equal(manifest.includeDependencies, true);
     assert.equal(manifest.includedAssets.length, 3);
+    assert.equal(manifest.digest.algorithm, "sha256");
+    assert.match(manifest.digest.files["assets.json"], /^[a-f0-9]{64}$/);
+    assert.match(manifest.digest.files["rendered/generic.json"], /^[a-f0-9]{64}$/);
 
     const bundleAssets = readJson(packResult.assetsPath);
     assert.equal(bundleAssets.assets.length, 3);
@@ -289,6 +293,17 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     const renderedBundle = readJson(packResult.renderedPath);
     assert.equal(renderedBundle.target, "generic");
     assert.equal(renderedBundle.assets.length, 3);
+
+    const checksums = readJson(packResult.checksumsPath);
+    assert.equal(checksums.algorithm, "sha256");
+    assert.match(checksums.files["manifest.json"], /^[a-f0-9]{64}$/);
+    assert.equal(checksums.files["assets.json"], manifest.digest.files["assets.json"]);
+    assert.equal(checksums.files["rendered/generic.json"], manifest.digest.files["rendered/generic.json"]);
+
+    result = runCli(workspaceDir, ["pack", "generic", "--entry", "agent:agent.harness-manager", "--include-dependencies", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const repeatedPackResult = JSON.parse(result.stdout);
+    assert.deepEqual(readJson(repeatedPackResult.checksumsPath), checksums);
 
     const exportPath = path.join(workspaceDir, "exports", "generic.json");
     assert.equal(existsSync(exportPath), true);
