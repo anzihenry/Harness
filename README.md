@@ -440,6 +440,7 @@ git push origin main --follow-tags
 - [Harness 0.3.0 Planning](/Users/xiejinheng/Coding/Harness/docs/roadmap-0.3.0.md)
 - [Harness 0.3.0 Task Breakdown](/Users/xiejinheng/Coding/Harness/docs/roadmap-0.3.0-tasks.md)
 - [Asset-to-Bundle Walkthrough](/Users/xiejinheng/Coding/Harness/docs/walkthrough-asset-to-bundle.md)
+- [Harness 0.3.0 Release Prep](/Users/xiejinheng/Coding/Harness/docs/release-0.3.0.md)
 - [Architecture](/Users/xiejinheng/Coding/Harness/docs/architecture.md)
 
 ## 下一步建议
