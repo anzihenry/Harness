@@ -1,6 +1,6 @@
 # Harness 0.3.0 Release Prep
 
-这份文档用于准备正式 `0.3.0` 发布。当前阶段只记录 release checklist，不直接 bump 版本、不创建 tag。
+这份文档用于准备和回溯正式 `0.3.0` 发布。
 
 ## 1. Release Scope
 
@@ -18,8 +18,8 @@
 
 - `package.json`：CLI `--version` 的来源
 - `.harness/workspace.json`：工作区基线版本
-- `CHANGELOG.md`：把 `0.3.0 - Unreleased` 改为带日期的正式条目
-- `README.md`：确认“当前仓库基线版本”已经从 `0.2.0` 切到 `0.3.0`
+- `CHANGELOG.md`：确认 `0.3.0` 条目已带发布日期
+- `README.md`：确认“当前仓库基线版本”已经切到 `0.3.0`
 - `docs/roadmap-0.3.0.md`：确认 roadmap 状态与最终范围一致
 - `docs/roadmap-0.3.0-tasks.md`：确认 Phase 任务状态可回溯
 - `docs/walkthrough-asset-to-bundle.md`：确认示例命令仍能代表最终发布能力
