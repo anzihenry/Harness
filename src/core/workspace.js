@@ -1066,6 +1066,28 @@ export async function showResolvedAsset(kind, assetId, version) {
   };
 }
 
+export async function getAssetDependencies(kind, assetId) {
+  const resolved = await showResolvedAsset(kind, assetId);
+
+  return {
+    id: resolved.asset.id,
+    kind: resolved.asset.kind,
+    version: resolved.asset.version,
+    directDependencies: (resolved.asset.dependencies || []).map((dependency) => ({
+      kind: dependency.kind,
+      id: dependency.id,
+      required: dependency.required ?? true,
+      status:
+        resolved.graph.missing.some((missing) => missing.kind === dependency.kind && missing.id === dependency.id) ? "missing" : "resolved"
+    })),
+    resolvedAssets: resolved.graph.assets.filter((asset) => asset.id !== resolved.asset.id),
+    missing: resolved.graph.missing,
+    cycles: resolved.graph.cycles,
+    graph: resolved.graph,
+    summary: resolved.summary
+  };
+}
+
 export async function getAssetHistory(kind, assetId) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

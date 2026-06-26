@@ -602,6 +602,48 @@ test("archive blocks assets that are still depended on", () => {
   }
 });
 
+test("deps reports direct and recursive dependency graph details", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["deps", "agent", "agent.harness-manager"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Dependencies: agent\.harness-manager/);
+    assert.match(result.stdout, /Direct: 2/);
+    assert.match(result.stdout, /Resolved assets: 2/);
+    assert.match(result.stdout, /Missing: 0/);
+    assert.match(result.stdout, /Cycles: 0/);
+    assert.match(result.stdout, /- skill:skill\.prompt-authoring \(required, resolved\)/);
+    assert.match(result.stdout, /- instruction:instruction\.repository-guardrails \(required, resolved\)/);
+
+    result = runCli(workspaceDir, ["deps", "agent", "agent.harness-manager", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const depsResult = JSON.parse(result.stdout);
+    assert.equal(depsResult.id, "agent.harness-manager");
+    assert.equal(depsResult.kind, "agent");
+    assert.equal(depsResult.directDependencies.length, 2);
+    assert.deepEqual(
+      depsResult.directDependencies.map((dependency) => `${dependency.kind}:${dependency.id}:${dependency.status}`),
+      [
+        "skill:skill.prompt-authoring:resolved",
+        "instruction:instruction.repository-guardrails:resolved"
+      ]
+    );
+    assert.deepEqual(
+      depsResult.resolvedAssets.map((asset) => asset.id).sort(),
+      ["instruction.repository-guardrails", "skill.prompt-authoring"]
+    );
+    assert.deepEqual(depsResult.missing, []);
+    assert.deepEqual(depsResult.cycles, []);
+    assert.equal(depsResult.summary.resolvedAssetCount, 3);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 

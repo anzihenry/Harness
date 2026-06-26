@@ -121,6 +121,7 @@ node ./src/cli.js add-dependency skill skill.agent-review instruction instructio
 node ./src/cli.js remove-dependency skill skill.agent-review instruction instruction.repository-guardrails
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
+node ./src/cli.js deps agent agent.harness-manager --json
 node ./src/cli.js history skill skill.agent-review --json
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
@@ -256,6 +257,15 @@ node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded r
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0
 node ./src/cli.js diff skill skill.agent-review 1.0.0
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
+```
+
+### `deps <kind> <id>`
+
+查看指定资产的直接依赖、递归解析出的依赖资产、缺失依赖和循环依赖。传入 `--json` 时返回结构化依赖图，字段包括 `directDependencies`、`resolvedAssets`、`missing` 和 `cycles`。
+
+```bash
+node ./src/cli.js deps agent agent.harness-manager
+node ./src/cli.js deps agent agent.harness-manager --json
 ```
 
 ### `history <kind> <id>`

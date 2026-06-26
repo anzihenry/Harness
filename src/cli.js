@@ -10,6 +10,7 @@ import {
   createAsset,
   diffAsset,
   exportWorkspace,
+  getAssetDependencies,
   getAssetHistory,
   initWorkspace,
   listAssets,
@@ -72,6 +73,7 @@ Usage:
   harness remove-dependency <kind> <id> <dependency-kind> <dependency-id>
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version] [--json]
+  harness deps <kind> <id> [--json]
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
@@ -94,6 +96,7 @@ Examples:
   harness remove-dependency skill skill.agent-review instruction instruction.repository-guardrails
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
+  harness deps agent agent.harness-manager --json
   harness history skill skill.prompt-authoring --json
   harness show skill skill.prompt-authoring 1.0.0
   harness show skill skill.prompt-authoring --content
@@ -428,6 +431,34 @@ async function main() {
       printSection(`Metadata (${metadataSummary.additions} additions, ${metadataSummary.removals} removals)`, [result.metadataDiff]);
       console.log("");
       printSection(`Content (${contentSummary.additions} additions, ${contentSummary.removals} removals)`, [result.contentDiff]);
+      return;
+    }
+
+    case "deps": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId] = positionals;
+      if (!kind || !assetId) {
+        throw new Error("Usage: harness deps <kind> <id> [--json]");
+      }
+
+      const result = await getAssetDependencies(kind, assetId);
+      if (flags.json === "true") {
+        printJson(result);
+        return;
+      }
+
+      console.log(`Dependencies: ${result.id}`);
+      console.log(`Kind: ${result.kind}`);
+      console.log(`Direct: ${result.directDependencies.length}`);
+      console.log(`Resolved assets: ${result.resolvedAssets.length}`);
+      console.log(`Missing: ${result.missing.length}`);
+      console.log(`Cycles: ${result.cycles.length}`);
+      if (result.directDependencies.length > 0) {
+        console.log("");
+        result.directDependencies.forEach((dependency) => {
+          console.log(`- ${dependency.kind}:${dependency.id} (${dependency.required ? "required" : "optional"}, ${dependency.status})`);
+        });
+      }
       return;
     }
 
