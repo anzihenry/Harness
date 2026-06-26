@@ -133,6 +133,7 @@ node ./src/cli.js show skill skill.prompt-authoring 1.0.0
 node ./src/cli.js show skill skill.prompt-authoring
 node ./src/cli.js export generic --entry agent:agent.harness-manager --include-dependencies --json
 node ./src/cli.js pack generic --entry agent:agent.harness-manager --include-dependencies --json
+node ./src/cli.js verify-bundle releases/agent.harness-manager-generic --json
 node ./src/cli.js export openai-codex --json
 node ./src/cli.js export
 ```
@@ -340,6 +341,15 @@ node ./src/cli.js export claude-code
 node ./src/cli.js pack generic --entry agent:agent.harness-manager
 node ./src/cli.js pack generic --entry agent:agent.harness-manager --include-dependencies --json
 node ./src/cli.js pack openai-codex --entry agent:agent.harness-manager --output releases/harness-manager-codex
+```
+
+### `verify-bundle <bundle-path>`
+
+校验 `pack` 生成的 bundle 是否完整可信。当前会检查必需文件、`checksums.json` 中的 digest、manifest 中的 digest 记录，以及 manifest 的资产版本集合是否与 `assets.json` 一致。
+
+```bash
+node ./src/cli.js verify-bundle releases/agent.harness-manager-generic
+node ./src/cli.js verify-bundle releases/agent.harness-manager-generic --json
 ```
 
 ## 设计原则

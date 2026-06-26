@@ -24,6 +24,7 @@ import {
   showAsset,
   showAssetVersion,
   updateAssetMetadata,
+  verifyBundle,
   validateWorkspace
 } from "./core/workspace.js";
 import { summarizeDiff } from "./utils/diff.js";
@@ -84,6 +85,7 @@ Usage:
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
   harness pack [target] --entry <kind:id> [--include-dependencies] [--output <dir>] [--json]
+  harness verify-bundle <bundle-path> [--json]
 
 Examples:
   harness init
@@ -113,6 +115,7 @@ Examples:
   harness show skill skill.prompt-authoring
   harness export generic --entry agent:agent.harness-manager --include-dependencies --json
   harness pack generic --entry agent:agent.harness-manager --include-dependencies --json
+  harness verify-bundle releases/agent.harness-manager-generic --json
   harness export openai-codex --json
   harness export
 `);
@@ -656,6 +659,38 @@ async function main() {
       console.log(`Bundle: ${result.bundlePath}`);
       console.log(`Manifest: ${result.manifestPath}`);
       console.log(`Checksums: ${result.checksumsPath}`);
+      return;
+    }
+
+    case "verify-bundle": {
+      const { flags, positionals } = parseFlags(args);
+      const [bundlePath] = positionals;
+      if (!bundlePath) {
+        throw new Error("Usage: harness verify-bundle <bundle-path> [--json]");
+      }
+
+      const result = await verifyBundle(bundlePath);
+      if (flags.json === "true") {
+        printJson(result);
+        if (!result.valid) {
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (result.valid) {
+        console.log("Bundle is valid.");
+        console.log(`Bundle: ${result.bundlePath}`);
+        return;
+      }
+
+      console.log("Bundle verification failed.");
+      console.log(`Found ${pluralize(result.issueCount, "issue")}.`);
+      console.log("");
+      result.issues.forEach((issue, index) => {
+        console.log(`${index + 1}. ${issue}`);
+      });
+      process.exitCode = 1;
       return;
     }
 

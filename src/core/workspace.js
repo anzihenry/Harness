@@ -304,6 +304,13 @@ function digestJson(data) {
   return sha256(stableStringify(data));
 }
 
+function normalizeManifestForDigest(manifest) {
+  return {
+    ...manifest,
+    generatedAt: "<excluded-from-digest>"
+  };
+}
+
 export async function initWorkspace(options = {}) {
   if (!options.force && (await pathExists(workspaceConfigPath))) {
     throw new Error("Harness workspace already exists. Re-run with --force to overwrite the current workspace.");
@@ -1619,14 +1626,10 @@ export async function packWorkspace(target, options = {}) {
     files: payloadDigests
   };
 
-  const manifestForDigest = {
-    ...manifest,
-    generatedAt: "<excluded-from-digest>"
-  };
   const checksumsDocument = {
     algorithm: "sha256",
     files: {
-      "manifest.json": digestJson(manifestForDigest),
+      "manifest.json": digestJson(normalizeManifestForDigest(manifest)),
       ...payloadDigests
     }
   };
@@ -1646,5 +1649,99 @@ export async function packWorkspace(target, options = {}) {
     entry: `${entry.kind}:${entry.id}`,
     includeDependencies,
     assetCount: selection.assets.length
+  };
+}
+
+async function readBundleJson(bundlePath, relativePath, issues) {
+  const filePath = path.join(bundlePath, relativePath);
+  if (!(await pathExists(filePath))) {
+    issues.push(`Missing bundle file: ${relativePath}`);
+    return null;
+  }
+
+  try {
+    return await readJson(filePath);
+  } catch (error) {
+    issues.push(`Invalid bundle JSON: ${relativePath} (${error.message})`);
+    return null;
+  }
+}
+
+function compareDigest(relativePath, actualDigest, expectedDigest, issues) {
+  if (!expectedDigest) {
+    issues.push(`Missing expected digest: ${relativePath}`);
+    return;
+  }
+
+  if (actualDigest !== expectedDigest) {
+    issues.push(`Digest mismatch: ${relativePath}`);
+  }
+}
+
+export async function verifyBundle(bundlePathInput) {
+  if (!isNonEmptyString(bundlePathInput)) {
+    throw new Error("Bundle path is required.");
+  }
+
+  const bundlePath = path.resolve(process.cwd(), bundlePathInput);
+  const issues = [];
+  const manifest = await readBundleJson(bundlePath, "manifest.json", issues);
+  const assetsDocument = await readBundleJson(bundlePath, "assets.json", issues);
+  const checksums = await readBundleJson(bundlePath, "checksums.json", issues);
+  const renderedRelativePath = manifest?.target ? `rendered/${manifest.target}.json` : null;
+  const renderedOutput = renderedRelativePath ? await readBundleJson(bundlePath, renderedRelativePath, issues) : null;
+
+  if (manifest && checksums) {
+    if (checksums.algorithm !== "sha256") {
+      issues.push(`Unsupported checksum algorithm: ${checksums.algorithm}`);
+    }
+
+    compareDigest("manifest.json", digestJson(normalizeManifestForDigest(manifest)), checksums.files?.["manifest.json"], issues);
+  }
+
+  if (assetsDocument && checksums) {
+    compareDigest("assets.json", digestJson(assetsDocument), checksums.files?.["assets.json"], issues);
+  }
+
+  if (renderedRelativePath && renderedOutput && checksums) {
+    compareDigest(renderedRelativePath, digestJson(renderedOutput), checksums.files?.[renderedRelativePath], issues);
+  }
+
+  if (manifest?.digest && checksums) {
+    if (manifest.digest.algorithm !== checksums.algorithm) {
+      issues.push("Manifest digest algorithm does not match checksums algorithm.");
+    }
+
+    for (const [relativePath, digest] of Object.entries(manifest.digest.files || {})) {
+      if (checksums.files?.[relativePath] !== digest) {
+        issues.push(`Manifest digest does not match checksums entry: ${relativePath}`);
+      }
+    }
+  }
+
+  if (manifest && assetsDocument) {
+    const manifestAssets = (manifest.includedAssets || [])
+      .map((asset) => `${asset.kind}:${asset.id}@${asset.version}`)
+      .sort((left, right) => left.localeCompare(right));
+    const payloadAssets = (assetsDocument.assets || [])
+      .map((asset) => `${asset.kind}:${asset.id}@${asset.version}`)
+      .sort((left, right) => left.localeCompare(right));
+
+    if (stableStringify(manifestAssets) !== stableStringify(payloadAssets)) {
+      issues.push("Manifest includedAssets do not match assets payload.");
+    }
+  }
+
+  return {
+    valid: issues.length === 0,
+    issueCount: issues.length,
+    issues,
+    bundlePath,
+    files: {
+      manifest: path.join(bundlePath, "manifest.json"),
+      assets: path.join(bundlePath, "assets.json"),
+      checksums: path.join(bundlePath, "checksums.json"),
+      rendered: renderedRelativePath ? path.join(bundlePath, renderedRelativePath) : null
+    }
   };
 }

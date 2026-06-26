@@ -305,6 +305,24 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     const repeatedPackResult = JSON.parse(result.stdout);
     assert.deepEqual(readJson(repeatedPackResult.checksumsPath), checksums);
 
+    result = runCli(workspaceDir, ["verify-bundle", packResult.bundlePath, "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const verificationResult = JSON.parse(result.stdout);
+    assert.equal(verificationResult.valid, true);
+    assert.equal(verificationResult.issueCount, 0);
+    assert.deepEqual(verificationResult.issues, []);
+
+    const tamperedAssets = readJson(packResult.assetsPath);
+    tamperedAssets.assets[0].version = "9.9.9";
+    writeFileSync(packResult.assetsPath, `${JSON.stringify(tamperedAssets, null, 2)}\n`, "utf8");
+
+    result = runCli(workspaceDir, ["verify-bundle", packResult.bundlePath, "--json"]);
+    assert.equal(result.status, 1);
+    const failedVerificationResult = JSON.parse(result.stdout);
+    assert.equal(failedVerificationResult.valid, false);
+    assert.ok(failedVerificationResult.issues.includes("Digest mismatch: assets.json"));
+    assert.ok(failedVerificationResult.issues.includes("Manifest includedAssets do not match assets payload."));
+
     const exportPath = path.join(workspaceDir, "exports", "generic.json");
     assert.equal(existsSync(exportPath), true);
     exported = readJson(exportPath);
