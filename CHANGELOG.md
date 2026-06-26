@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0 - Unreleased
+
+### Added
+
+- asset maintenance commands: `set`, `add-dependency`, `remove-dependency`, `clone`, and `archive`
+- dependency graph commands: `deps`, `dependents`, `orphans`, and `impact`
+- bundle `checksums.json` generation plus manifest digest metadata for release artifact verification
+- `verify-bundle` command for validating required bundle files, SHA-256 digests, and asset payload consistency
+- `pack --channel draft|stable`, with `stable` bundles requiring workspace validation before packaging
+- `pack --archive` for producing distributable `.tar.gz` bundle archives
+- `docs/walkthrough-asset-to-bundle.md` covering asset creation through bundle verification
+- `docs/release-0.3.0.md` with version touchpoints, verification commands, manual checks, and release flow
+
+### Changed
+
+- repository sample agent now declares dependencies that match the initialized sample workspace
+- asset metadata now includes `status: "active" | "archived"` and `list --status` filtering
+- README command surface now reflects the `0.3.0` asset lifecycle, dependency graph, and bundle verification workflows
+- smoke coverage now exercises lifecycle commands, graph queries, bundle digests, bundle verification, release channels, and archive packaging
+
+### Fixed
+
+- archive flow now blocks assets that are still depended on, avoiding broken dependency graphs
+- bundle verification now catches missing files, checksum mismatches, and manifest/assets asset set drift
+
 ## 0.2.0 - 2026-06-17
 
 ### Added
