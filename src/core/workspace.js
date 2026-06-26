@@ -152,6 +152,7 @@ Write prompts that are:
 
 const assetIdSegmentPattern = "[a-z0-9]+(?:-[a-z0-9]+)*";
 const supportedAssetStatuses = ["active", "archived"];
+const supportedBundleChannels = ["draft", "stable"];
 
 function currentDate() {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -1561,9 +1562,21 @@ export async function packWorkspace(target, options = {}) {
   const resolvedTarget = target || workspace.defaultTarget;
   const entry = options.entry;
   const includeDependencies = options.includeDependencies === true;
+  const channel = options.channel || "draft";
 
   if (!entry) {
     throw new Error("Pack requires --entry <kind:id>");
+  }
+
+  if (!supportedBundleChannels.includes(channel)) {
+    throw new Error(`Unsupported bundle channel: ${channel}. Supported channels: ${supportedBundleChannels.join(", ")}`);
+  }
+
+  if (channel === "stable") {
+    const validationResult = await validateWorkspace();
+    if (!validationResult.valid) {
+      throw new Error(`Stable pack requires a valid workspace: ${validationResult.issues[0]}`);
+    }
   }
 
   if (options.output && !isSafeRelativePath(options.output)) {
@@ -1592,6 +1605,7 @@ export async function packWorkspace(target, options = {}) {
       schemaVersion: workspace.schemaVersion || "1"
     },
     target: resolvedTarget,
+    channel,
     entryAsset: {
       kind: rootAsset.kind,
       id: rootAsset.id,
@@ -1612,6 +1626,7 @@ export async function packWorkspace(target, options = {}) {
       version: workspace.version
     },
     target: resolvedTarget,
+    channel,
     entry: `${entry.kind}:${entry.id}`,
     includeDependencies,
     assets: selection.assets.map(toBundleAsset)
@@ -1646,6 +1661,7 @@ export async function packWorkspace(target, options = {}) {
     renderedPath: path.join(bundleDirectory, renderedPath),
     checksumsPath: path.join(bundleDirectory, "checksums.json"),
     target: resolvedTarget,
+    channel,
     entry: `${entry.kind}:${entry.id}`,
     includeDependencies,
     assetCount: selection.assets.length

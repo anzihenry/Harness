@@ -84,7 +84,7 @@ Usage:
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
-  harness pack [target] --entry <kind:id> [--include-dependencies] [--output <dir>] [--json]
+  harness pack [target] --entry <kind:id> [--include-dependencies] [--channel draft|stable] [--output <dir>] [--json]
   harness verify-bundle <bundle-path> [--json]
 
 Examples:
@@ -115,6 +115,7 @@ Examples:
   harness show skill skill.prompt-authoring
   harness export generic --entry agent:agent.harness-manager --include-dependencies --json
   harness pack generic --entry agent:agent.harness-manager --include-dependencies --json
+  harness pack generic --entry agent:agent.harness-manager --channel stable
   harness verify-bundle releases/agent.harness-manager-generic --json
   harness export openai-codex --json
   harness export
@@ -644,6 +645,7 @@ async function main() {
       const result = await packWorkspace(target, {
         entry: parseEntryFlag(flags.entry),
         includeDependencies: flags["include-dependencies"] === "true",
+        channel: flags.channel,
         output: flags.output
       });
       if (flags.json === "true") {
@@ -653,6 +655,7 @@ async function main() {
 
       console.log(`Pack complete.`);
       console.log(`Target: ${result.target}`);
+      console.log(`Channel: ${result.channel}`);
       console.log(`Entry: ${result.entry}`);
       console.log(`Assets: ${result.assetCount}`);
       console.log(`Included dependencies: ${result.includeDependencies ? "yes" : "no"}`);

@@ -279,6 +279,7 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
 
     const manifest = readJson(packResult.manifestPath);
     assert.equal(manifest.target, "generic");
+    assert.equal(manifest.channel, "draft");
     assert.equal(manifest.entryAsset.id, "agent.harness-manager");
     assert.equal(manifest.includeDependencies, true);
     assert.equal(manifest.includedAssets.length, 3);
@@ -287,6 +288,7 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(manifest.digest.files["rendered/generic.json"], /^[a-f0-9]{64}$/);
 
     const bundleAssets = readJson(packResult.assetsPath);
+    assert.equal(bundleAssets.channel, "draft");
     assert.equal(bundleAssets.assets.length, 3);
     assert.equal(bundleAssets.assets[0].content !== undefined, true);
 
@@ -304,6 +306,13 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     const repeatedPackResult = JSON.parse(result.stdout);
     assert.deepEqual(readJson(repeatedPackResult.checksumsPath), checksums);
+
+    result = runCli(workspaceDir, ["pack", "generic", "--entry", "agent:agent.harness-manager", "--channel", "stable", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const stablePackResult = JSON.parse(result.stdout);
+    assert.equal(stablePackResult.channel, "stable");
+    const stableManifest = readJson(stablePackResult.manifestPath);
+    assert.equal(stableManifest.channel, "stable");
 
     result = runCli(workspaceDir, ["verify-bundle", packResult.bundlePath, "--json"]);
     assert.equal(result.status, 0, result.stderr);
@@ -1053,6 +1062,26 @@ test("pack requires an entry asset", () => {
     result = runCli(workspaceDir, ["pack", "generic"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Pack requires --entry <kind:id>/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("stable pack requires a valid workspace", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const workspaceConfigPath = path.join(workspaceDir, ".harness", "workspace.json");
+    const workspace = readJson(workspaceConfigPath);
+    workspace.version = "not-semver";
+    writeFileSync(workspaceConfigPath, `${JSON.stringify(workspace, null, 2)}\n`, "utf8");
+
+    result = runCli(workspaceDir, ["pack", "generic", "--entry", "agent:agent.harness-manager", "--channel", "stable"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Stable pack requires a valid workspace: Workspace version must be semver: not-semver/);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }
