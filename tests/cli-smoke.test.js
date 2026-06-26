@@ -701,6 +701,43 @@ test("dependents reports direct and recursive upstream paths", () => {
   }
 });
 
+test("orphans reports unreferenced non-entry assets with optional kind filtering", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["new", "skill", "skill.unused-checklist", "--description", "Unused checklist", "--owner", "team-harness"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["clone", "agent", "agent.harness-manager", "agent.unreferenced-manager"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["orphans"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Orphans: 1/);
+    assert.match(result.stdout, /Entry kinds: agent/);
+    assert.match(result.stdout, /- skill:skill\.unused-checklist @ 1\.0\.0/);
+    assert.doesNotMatch(result.stdout, /agent\.unreferenced-manager/);
+
+    result = runCli(workspaceDir, ["orphans", "--kind", "skill", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const orphanSkills = JSON.parse(result.stdout);
+    assert.deepEqual(orphanSkills.entryKinds, ["agent"]);
+    assert.equal(orphanSkills.filters.kind, "skill");
+    assert.equal(orphanSkills.orphanCount, 1);
+    assert.equal(orphanSkills.orphans[0].id, "skill.unused-checklist");
+
+    result = runCli(workspaceDir, ["orphans", "--kind", "instruction", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const orphanInstructions = JSON.parse(result.stdout);
+    assert.equal(orphanInstructions.orphanCount, 0);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 

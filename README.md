@@ -123,6 +123,7 @@ node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded r
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js deps agent agent.harness-manager --json
 node ./src/cli.js dependents skill skill.prompt-authoring --json
+node ./src/cli.js orphans --kind skill --json
 node ./src/cli.js history skill skill.agent-review --json
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
@@ -276,6 +277,15 @@ node ./src/cli.js deps agent agent.harness-manager --json
 ```bash
 node ./src/cli.js dependents skill skill.prompt-authoring
 node ./src/cli.js dependents skill skill.prompt-authoring --json
+```
+
+### `orphans`
+
+列出没有被任何资产引用的非入口资产。当前默认把 `agent` 视为入口资产，因此不会把未被引用的 agent 当作 orphan；可以用 `--kind` 只查看某一类资产。
+
+```bash
+node ./src/cli.js orphans
+node ./src/cli.js orphans --kind skill --json
 ```
 
 ### `history <kind> <id>`

@@ -1140,6 +1140,36 @@ export async function getAssetDependents(kind, assetId) {
   };
 }
 
+export async function getOrphanAssets(filters = {}) {
+  if (filters.kind) {
+    assertSupportedKind(filters.kind);
+  }
+
+  const assets = await listAssets();
+  const referencedIds = new Set();
+  for (const asset of assets) {
+    for (const dependency of asset.dependencies || []) {
+      referencedIds.add(dependency.id);
+    }
+  }
+
+  const orphans = assets
+    .filter((asset) => asset.kind !== "agent")
+    .filter((asset) => !referencedIds.has(asset.id))
+    .filter((asset) => !filters.kind || asset.kind === filters.kind)
+    .map(summarizeResolvedAsset)
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return {
+    entryKinds: ["agent"],
+    filters: {
+      kind: filters.kind || null
+    },
+    orphanCount: orphans.length,
+    orphans
+  };
+}
+
 export async function getAssetHistory(kind, assetId) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

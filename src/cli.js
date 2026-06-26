@@ -13,6 +13,7 @@ import {
   getAssetDependents,
   getAssetDependencies,
   getAssetHistory,
+  getOrphanAssets,
   initWorkspace,
   listAssets,
   loadWorkspace,
@@ -76,6 +77,7 @@ Usage:
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness deps <kind> <id> [--json]
   harness dependents <kind> <id> [--json]
+  harness orphans [--kind <kind>] [--json]
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
@@ -100,6 +102,7 @@ Examples:
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
   harness deps agent agent.harness-manager --json
   harness dependents skill skill.prompt-authoring --json
+  harness orphans --kind skill --json
   harness history skill skill.prompt-authoring --json
   harness show skill skill.prompt-authoring 1.0.0
   harness show skill skill.prompt-authoring --content
@@ -487,6 +490,31 @@ async function main() {
         console.log("");
         result.paths.forEach((pathEntry) => {
           console.log(`- ${pathEntry.assets.join(" -> ")}`);
+        });
+      }
+      return;
+    }
+
+    case "orphans": {
+      const { flags } = parseFlags(args);
+      if (flags.kind && !supportedKinds.includes(flags.kind)) {
+        throw new Error(`Unsupported asset kind: ${flags.kind}. Supported kinds: ${supportedKinds.join(", ")}`);
+      }
+
+      const result = await getOrphanAssets({
+        kind: flags.kind
+      });
+      if (flags.json === "true") {
+        printJson(result);
+        return;
+      }
+
+      console.log(`Orphans: ${result.orphanCount}`);
+      console.log(`Entry kinds: ${result.entryKinds.join(", ")}`);
+      if (result.orphans.length > 0) {
+        console.log("");
+        result.orphans.forEach((asset) => {
+          console.log(`- ${asset.kind}:${asset.id} @ ${asset.version}`);
         });
       }
       return;
