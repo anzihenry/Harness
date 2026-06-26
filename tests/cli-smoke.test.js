@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { gunzipSync } from "node:zlib";
 
 const cliPath = path.resolve("src/cli.js");
 
@@ -20,6 +21,28 @@ function runCli(cwd, args) {
 
 function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf8"));
+}
+
+function extractTarGzip(archivePath, outputDir) {
+  const tar = gunzipSync(readFileSync(archivePath));
+  let offset = 0;
+
+  while (offset + 512 <= tar.length) {
+    const header = tar.subarray(offset, offset + 512);
+    offset += 512;
+    const name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    if (!name) {
+      break;
+    }
+
+    const sizeText = header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim();
+    const size = Number.parseInt(sizeText, 8) || 0;
+    const content = tar.subarray(offset, offset + size);
+    const outputPath = path.join(outputDir, name);
+    mkdirSync(path.dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, content);
+    offset += size + ((512 - (size % 512)) % 512);
+  }
 }
 
 test("CLI smoke flow covers init, validate, list, show, export, new, bump-version, and diff", () => {
@@ -331,6 +354,20 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(failedVerificationResult.valid, false);
     assert.ok(failedVerificationResult.issues.includes("Digest mismatch: assets.json"));
     assert.ok(failedVerificationResult.issues.includes("Manifest includedAssets do not match assets payload."));
+
+    result = runCli(workspaceDir, ["pack", "generic", "--entry", "agent:agent.harness-manager", "--include-dependencies", "--archive", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const archivedPackResult = JSON.parse(result.stdout);
+    assert.match(archivedPackResult.archivePath, /releases\/agent\.harness-manager-generic\.tar\.gz/);
+    assert.equal(existsSync(archivedPackResult.archivePath), true);
+
+    const extractedBundlePath = path.join(workspaceDir, "extracted-bundle");
+    mkdirSync(extractedBundlePath, { recursive: true });
+    extractTarGzip(archivedPackResult.archivePath, extractedBundlePath);
+    result = runCli(workspaceDir, ["verify-bundle", extractedBundlePath, "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const extractedVerificationResult = JSON.parse(result.stdout);
+    assert.equal(extractedVerificationResult.valid, true);
 
     const exportPath = path.join(workspaceDir, "exports", "generic.json");
     assert.equal(existsSync(exportPath), true);

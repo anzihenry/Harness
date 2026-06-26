@@ -84,7 +84,7 @@ Usage:
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
-  harness pack [target] --entry <kind:id> [--include-dependencies] [--channel draft|stable] [--output <dir>] [--json]
+  harness pack [target] --entry <kind:id> [--include-dependencies] [--channel draft|stable] [--output <dir>] [--archive] [--json]
   harness verify-bundle <bundle-path> [--json]
 
 Examples:
@@ -116,6 +116,7 @@ Examples:
   harness export generic --entry agent:agent.harness-manager --include-dependencies --json
   harness pack generic --entry agent:agent.harness-manager --include-dependencies --json
   harness pack generic --entry agent:agent.harness-manager --channel stable
+  harness pack generic --entry agent:agent.harness-manager --archive
   harness verify-bundle releases/agent.harness-manager-generic --json
   harness export openai-codex --json
   harness export
@@ -646,7 +647,8 @@ async function main() {
         entry: parseEntryFlag(flags.entry),
         includeDependencies: flags["include-dependencies"] === "true",
         channel: flags.channel,
-        output: flags.output
+        output: flags.output,
+        archive: flags.archive === "true"
       });
       if (flags.json === "true") {
         printJson(result);
@@ -662,6 +664,9 @@ async function main() {
       console.log(`Bundle: ${result.bundlePath}`);
       console.log(`Manifest: ${result.manifestPath}`);
       console.log(`Checksums: ${result.checksumsPath}`);
+      if (result.archivePath) {
+        console.log(`Archive: ${result.archivePath}`);
+      }
       return;
     }
 

@@ -1,5 +1,6 @@
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import path from "node:path";
 import {
   assetsRoot,
@@ -310,6 +311,50 @@ function normalizeManifestForDigest(manifest) {
     ...manifest,
     generatedAt: "<excluded-from-digest>"
   };
+}
+
+function tarOctal(value, length) {
+  const octal = value.toString(8);
+  return `${"0".repeat(Math.max(length - octal.length - 1, 0))}${octal}\0`;
+}
+
+function createTarHeader(name, size) {
+  const header = Buffer.alloc(512, 0);
+  header.write(name, 0, 100, "utf8");
+  header.write(tarOctal(0o644, 8), 100, 8, "ascii");
+  header.write(tarOctal(0, 8), 108, 8, "ascii");
+  header.write(tarOctal(0, 8), 116, 8, "ascii");
+  header.write(tarOctal(size, 12), 124, 12, "ascii");
+  header.write(tarOctal(0, 12), 136, 12, "ascii");
+  header.fill(" ", 148, 156);
+  header.write("0", 156, 1, "ascii");
+  header.write("ustar", 257, 6, "ascii");
+  header.write("00", 263, 2, "ascii");
+
+  let checksum = 0;
+  for (const byte of header) {
+    checksum += byte;
+  }
+  header.write(tarOctal(checksum, 8), 148, 8, "ascii");
+  return header;
+}
+
+function createTarGzip(entries) {
+  const blocks = [];
+  for (const entry of entries) {
+    const data = Buffer.from(entry.content, "utf8");
+    blocks.push(createTarHeader(entry.name, data.length));
+    blocks.push(data);
+    const padding = (512 - (data.length % 512)) % 512;
+    if (padding > 0) {
+      blocks.push(Buffer.alloc(padding, 0));
+    }
+  }
+
+  blocks.push(Buffer.alloc(1024, 0));
+  return gzipSync(Buffer.concat(blocks), {
+    mtime: 0
+  });
 }
 
 export async function initWorkspace(options = {}) {
@@ -1654,12 +1699,38 @@ export async function packWorkspace(target, options = {}) {
   await writeJson(path.join(bundleDirectory, renderedPath), renderedOutput);
   await writeJson(path.join(bundleDirectory, "checksums.json"), checksumsDocument);
 
+  const archivePath = `${bundleDirectory}.tar.gz`;
+  if (options.archive === true) {
+    await writeFile(
+      archivePath,
+      createTarGzip([
+        {
+          name: "manifest.json",
+          content: stableStringify(manifest) + "\n"
+        },
+        {
+          name: "assets.json",
+          content: stableStringify(assetsDocument) + "\n"
+        },
+        {
+          name: renderedPath,
+          content: stableStringify(renderedOutput) + "\n"
+        },
+        {
+          name: "checksums.json",
+          content: stableStringify(checksumsDocument) + "\n"
+        }
+      ])
+    );
+  }
+
   return {
     bundlePath: bundleDirectory,
     manifestPath: path.join(bundleDirectory, "manifest.json"),
     assetsPath: path.join(bundleDirectory, "assets.json"),
     renderedPath: path.join(bundleDirectory, renderedPath),
     checksumsPath: path.join(bundleDirectory, "checksums.json"),
+    archivePath: options.archive === true ? archivePath : null,
     target: resolvedTarget,
     channel,
     entry: `${entry.kind}:${entry.id}`,
