@@ -1170,6 +1170,33 @@ export async function getOrphanAssets(filters = {}) {
   };
 }
 
+export async function getAssetImpact(kind, assetId) {
+  const dependents = await getAssetDependents(kind, assetId);
+  const affectedAssets = dependents.upstreamAssets;
+  const affectedEntryAssets = affectedAssets
+    .filter((asset) => asset.kind === "agent")
+    .sort((left, right) => left.id.localeCompare(right.id));
+
+  return {
+    id: dependents.id,
+    kind: dependents.kind,
+    version: dependents.version,
+    affectedAssets,
+    affectedEntryAssets,
+    suggestedPacks: affectedEntryAssets.map((asset) => ({
+      entry: `${asset.kind}:${asset.id}`,
+      reason: `Repack because ${asset.id} depends on ${assetId}.`
+    })),
+    paths: dependents.paths,
+    summary: {
+      affectedAssetCount: affectedAssets.length,
+      affectedEntryAssetCount: affectedEntryAssets.length,
+      suggestedPackCount: affectedEntryAssets.length,
+      pathCount: dependents.paths.length
+    }
+  };
+}
+
 export async function getAssetHistory(kind, assetId) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

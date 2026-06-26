@@ -13,6 +13,7 @@ import {
   getAssetDependents,
   getAssetDependencies,
   getAssetHistory,
+  getAssetImpact,
   getOrphanAssets,
   initWorkspace,
   listAssets,
@@ -78,6 +79,7 @@ Usage:
   harness deps <kind> <id> [--json]
   harness dependents <kind> <id> [--json]
   harness orphans [--kind <kind>] [--json]
+  harness impact <kind> <id> [--json]
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
@@ -103,6 +105,7 @@ Examples:
   harness deps agent agent.harness-manager --json
   harness dependents skill skill.prompt-authoring --json
   harness orphans --kind skill --json
+  harness impact skill skill.prompt-authoring --json
   harness history skill skill.prompt-authoring --json
   harness show skill skill.prompt-authoring 1.0.0
   harness show skill skill.prompt-authoring --content
@@ -515,6 +518,33 @@ async function main() {
         console.log("");
         result.orphans.forEach((asset) => {
           console.log(`- ${asset.kind}:${asset.id} @ ${asset.version}`);
+        });
+      }
+      return;
+    }
+
+    case "impact": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId] = positionals;
+      if (!kind || !assetId) {
+        throw new Error("Usage: harness impact <kind> <id> [--json]");
+      }
+
+      const result = await getAssetImpact(kind, assetId);
+      if (flags.json === "true") {
+        printJson(result);
+        return;
+      }
+
+      console.log(`Impact: ${result.id}`);
+      console.log(`Kind: ${result.kind}`);
+      console.log(`Affected assets: ${result.affectedAssets.length}`);
+      console.log(`Affected entry agents: ${result.affectedEntryAssets.length}`);
+      console.log(`Suggested packs: ${result.suggestedPacks.length}`);
+      if (result.suggestedPacks.length > 0) {
+        console.log("");
+        result.suggestedPacks.forEach((pack) => {
+          console.log(`- ${pack.entry}`);
         });
       }
       return;

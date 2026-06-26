@@ -738,6 +738,49 @@ test("orphans reports unreferenced non-entry assets with optional kind filtering
   }
 });
 
+test("impact reports affected assets, entry agents, and suggested packs", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["clone", "agent", "agent.harness-manager", "agent.platform-manager"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["impact", "skill", "skill.prompt-authoring"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Impact: skill\.prompt-authoring/);
+    assert.match(result.stdout, /Affected assets: 2/);
+    assert.match(result.stdout, /Affected entry agents: 2/);
+    assert.match(result.stdout, /Suggested packs: 2/);
+    assert.match(result.stdout, /- agent:agent\.harness-manager/);
+    assert.match(result.stdout, /- agent:agent\.platform-manager/);
+
+    result = runCli(workspaceDir, ["impact", "skill", "skill.prompt-authoring", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const impactResult = JSON.parse(result.stdout);
+    assert.equal(impactResult.id, "skill.prompt-authoring");
+    assert.deepEqual(
+      impactResult.affectedAssets.map((asset) => asset.id),
+      ["agent.harness-manager", "agent.platform-manager"]
+    );
+    assert.deepEqual(
+      impactResult.affectedEntryAssets.map((asset) => asset.id),
+      ["agent.harness-manager", "agent.platform-manager"]
+    );
+    assert.deepEqual(
+      impactResult.suggestedPacks.map((pack) => pack.entry),
+      ["agent:agent.harness-manager", "agent:agent.platform-manager"]
+    );
+    assert.equal(impactResult.summary.affectedAssetCount, 2);
+    assert.equal(impactResult.summary.affectedEntryAssetCount, 2);
+    assert.equal(impactResult.summary.suggestedPackCount, 2);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 

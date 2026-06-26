@@ -124,6 +124,7 @@ node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js deps agent agent.harness-manager --json
 node ./src/cli.js dependents skill skill.prompt-authoring --json
 node ./src/cli.js orphans --kind skill --json
+node ./src/cli.js impact skill skill.prompt-authoring --json
 node ./src/cli.js history skill skill.agent-review --json
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
@@ -286,6 +287,15 @@ node ./src/cli.js dependents skill skill.prompt-authoring --json
 ```bash
 node ./src/cli.js orphans
 node ./src/cli.js orphans --kind skill --json
+```
+
+### `impact <kind> <id>`
+
+分析修改指定资产会影响哪些上游资产和入口 agent，并给出建议重新打包的 entry。当前支持资产级分析，后续可以扩展到 `--changed <path>`。
+
+```bash
+node ./src/cli.js impact skill skill.prompt-authoring
+node ./src/cli.js impact skill skill.prompt-authoring --json
 ```
 
 ### `history <kind> <id>`
