@@ -148,12 +148,43 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Created \[skill\] skill\.release-checklist @ 1\.0\.0/);
 
-    result = runCli(workspaceDir, ["list", "--owner", "team-harness", "--tag", "release", "--target", "openai-codex", "--json"]);
+    result = runCli(workspaceDir, [
+      "set",
+      "skill",
+      "skill.release-checklist",
+      "--name",
+      "Release Checklist",
+      "--description",
+      "Release readiness checklist for Harness assets",
+      "--owner",
+      "team-platform",
+      "--tags",
+      "release,readiness",
+      "--targets",
+      "generic,openai-codex"
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Updated \[skill\] skill\.release-checklist @ 1\.0\.0/);
+    assert.match(result.stdout, /Fields: description, name, owner, tags, targets/);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.release-checklist", "--metadata"]);
+    assert.equal(result.status, 0, result.stderr);
+    const updatedMetadata = JSON.parse(result.stdout);
+    assert.equal(updatedMetadata.name, "Release Checklist");
+    assert.equal(updatedMetadata.description, "Release readiness checklist for Harness assets");
+    assert.equal(updatedMetadata.owner, "team-platform");
+    assert.deepEqual(updatedMetadata.tags, ["release", "readiness"]);
+    assert.deepEqual(updatedMetadata.compatibility.targets, ["generic", "openai-codex"]);
+    assert.equal(updatedMetadata.version, "1.0.0");
+    assert.equal(updatedMetadata.history.length, 1);
+    assert.equal(updatedMetadata.history[0].version, "1.0.0");
+
+    result = runCli(workspaceDir, ["list", "--owner", "team-platform", "--tag", "release", "--target", "openai-codex", "--json"]);
     assert.equal(result.status, 0, result.stderr);
     const filteredAssets = JSON.parse(result.stdout);
     assert.equal(filteredAssets.assetCount, 1);
     assert.equal(filteredAssets.assets[0].id, "skill.release-checklist");
-    assert.deepEqual(filteredAssets.assets[0].tags, ["release", "quality"]);
+    assert.deepEqual(filteredAssets.assets[0].tags, ["release", "readiness"]);
     assert.match(filteredAssets.assets[0].compatibility.targets.join(","), /openai-codex/);
 
     result = runCli(workspaceDir, ["list", "--group-by", "target", "--json"]);
@@ -162,10 +193,12 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(groupedByTarget.groupBy, "target");
     assert.equal(groupedByTarget.assetCount, 4);
     assert.equal(groupedByTarget.groups.length, 3);
-    assert.equal(groupedByTarget.groups[0].key, "claude-code");
-    assert.equal(groupedByTarget.groups[0].assetCount, 4);
-    assert.equal(groupedByTarget.groups[1].key, "generic");
-    assert.equal(groupedByTarget.groups[2].key, "openai-codex");
+    const targetCounts = Object.fromEntries(groupedByTarget.groups.map((group) => [group.key, group.assetCount]));
+    assert.deepEqual(targetCounts, {
+      "claude-code": 3,
+      generic: 4,
+      "openai-codex": 4
+    });
 
     result = runCli(workspaceDir, ["bump-version", "skill", "skill.release-checklist", "1.1.0", "--note", "Expanded rollout checks"]);
     assert.equal(result.status, 0, result.stderr);
@@ -182,7 +215,7 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.match(result.stdout, /Diff: skill\.release-checklist/);
     assert.match(result.stdout, /Range: 1\.0\.0 -> 1\.1\.0/);
     assert.match(result.stdout, /Summary: \d+ metadata fields changed; content unchanged/);
-    assert.match(result.stdout, /Fields: history, version/);
+    assert.match(result.stdout, /Fields: compatibility, description, history, owner, tags, version/);
     assert.match(result.stdout, /Metadata \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Content \(\d+ additions, \d+ removals\)/);
     assert.match(result.stdout, /Expanded rollout checks/);
@@ -194,7 +227,7 @@ test("CLI smoke flow covers init, validate, list, show, export, new, bump-versio
     assert.equal(diffResult.fromVersion, "1.0.0");
     assert.equal(diffResult.toVersion, "1.1.0");
     assert.equal(diffResult.hasContentChanges, false);
-    assert.deepEqual(diffResult.metadataFieldsChanged, ["history", "version"]);
+    assert.deepEqual(diffResult.metadataFieldsChanged, ["compatibility", "description", "history", "owner", "tags", "version"]);
 
     result = runCli(workspaceDir, ["export"]);
     assert.equal(result.status, 0, result.stderr);
@@ -311,6 +344,36 @@ test("list rejects unsupported group-by values", () => {
     result = runCli(workspaceDir, ["list", "--group-by", "version"]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Unsupported list group: version/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("set requires at least one metadata update", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["set", "skill", "skill.prompt-authoring"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /No metadata updates provided/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("set rejects unsupported compatibility targets", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["set", "skill", "skill.prompt-authoring", "--targets", "generic,missing-target"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Unsupported compatibility target for skill\.prompt-authoring: missing-target/);
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
   }

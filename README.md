@@ -113,6 +113,7 @@ node ./src/cli.js list --group-by owner
 node ./src/cli.js targets
 node ./src/cli.js validate --json
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
+node ./src/cli.js set skill skill.agent-review --owner team-platform --tags review,quality
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js history skill skill.agent-review --json
@@ -187,6 +188,16 @@ node ./src/cli.js new skill skill.agent-review \
   --description "Review checklist for agent changes" \
   --owner team-harness \
   --tags review,quality
+```
+
+### `set <kind> <id>`
+
+更新资产 metadata，并保留当前 `version`、`history` 和正文内容。当前支持更新 `name`、`description`、`owner`、`tags` 和 `compatibility.targets`。
+
+```bash
+node ./src/cli.js set skill skill.agent-review --owner team-platform
+node ./src/cli.js set skill skill.agent-review --tags review,quality
+node ./src/cli.js set skill skill.agent-review --targets generic,openai-codex
 ```
 
 ### `bump-version <kind> <id> <version>`

@@ -460,6 +460,73 @@ export async function createAsset(kind, assetId, options = {}) {
   };
 }
 
+export async function updateAssetMetadata(kind, assetId, options = {}) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+
+  const editableFields = ["name", "description", "owner", "tags", "targets"];
+  const requestedFields = editableFields.filter((field) => options[field] !== undefined);
+  if (requestedFields.length === 0) {
+    throw new Error("No metadata updates provided. Use at least one of --name, --description, --owner, --tags, or --targets.");
+  }
+
+  const workspace = await loadWorkspace();
+  const asset = await loadAsset(kind, assetId);
+  const updatedMetadata = stripRenderedContent(asset);
+
+  for (const field of ["name", "description", "owner"]) {
+    if (options[field] !== undefined) {
+      if (!isNonEmptyString(options[field])) {
+        throw new Error(`Asset ${field} must be a non-empty string.`);
+      }
+
+      updatedMetadata[field] = options[field];
+    }
+  }
+
+  if (options.tags !== undefined) {
+    updatedMetadata.tags = parseTags(options.tags);
+  }
+
+  if (options.targets !== undefined) {
+    const targets = options.targets
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (targets.length === 0) {
+      throw new Error("Asset targets must include at least one target.");
+    }
+
+    const seenTargets = new Set();
+    for (const target of targets) {
+      if (seenTargets.has(target)) {
+        throw new Error(`Asset targets contain duplicates: ${target}`);
+      }
+
+      if (!workspace.supportedTargets.includes(target)) {
+        throw new Error(`Unsupported compatibility target for ${assetId}: ${target}`);
+      }
+
+      seenTargets.add(target);
+    }
+
+    updatedMetadata.compatibility = {
+      ...updatedMetadata.compatibility,
+      targets
+    };
+  }
+
+  await saveAssetFiles(kind, assetId, updatedMetadata, asset.renderedContent);
+
+  return {
+    kind,
+    id: assetId,
+    updatedFields: requestedFields.sort((left, right) => left.localeCompare(right)),
+    version: updatedMetadata.version
+  };
+}
+
 export async function bumpAssetVersion(kind, assetId, nextVersion, options = {}) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

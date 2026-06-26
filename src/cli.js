@@ -15,6 +15,7 @@ import {
   showResolvedAsset,
   showAsset,
   showAssetVersion,
+  updateAssetMetadata,
   validateWorkspace
 } from "./core/workspace.js";
 import { summarizeDiff } from "./utils/diff.js";
@@ -59,6 +60,7 @@ Usage:
   harness targets
   harness validate [--json]
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
+  harness set <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b]
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness history <kind> <id> [--json]
@@ -75,6 +77,7 @@ Examples:
   harness targets
   harness validate --json
   harness new skill skill.agent-review --owner team-harness --tags review,agent
+  harness set skill skill.agent-review --owner team-platform --tags review,quality
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
   harness history skill skill.prompt-authoring --json
@@ -297,6 +300,19 @@ async function main() {
 
       const result = await createAsset(kind, assetId, flags);
       console.log(`Created [${result.kind}] ${result.id} @ ${result.version}`);
+      return;
+    }
+
+    case "set": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId] = positionals;
+      if (!kind || !assetId) {
+        throw new Error("Usage: harness set <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b]");
+      }
+
+      const result = await updateAssetMetadata(kind, assetId, flags);
+      console.log(`Updated [${result.kind}] ${result.id} @ ${result.version}`);
+      console.log(`Fields: ${result.updatedFields.join(", ")}`);
       return;
     }
 
