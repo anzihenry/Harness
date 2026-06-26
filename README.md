@@ -114,6 +114,7 @@ node ./src/cli.js targets
 node ./src/cli.js validate --json
 node ./src/cli.js new skill skill.agent-review --owner team-harness --tags review,agent
 node ./src/cli.js set skill skill.agent-review --owner team-platform --tags review,quality
+node ./src/cli.js add-dependency agent agent.harness-manager skill skill.prompt-authoring
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js history skill skill.agent-review --json
@@ -198,6 +199,15 @@ node ./src/cli.js new skill skill.agent-review \
 node ./src/cli.js set skill skill.agent-review --owner team-platform
 node ./src/cli.js set skill skill.agent-review --tags review,quality
 node ./src/cli.js set skill skill.agent-review --targets generic,openai-codex
+```
+
+### `add-dependency <kind> <id> <dependency-kind> <dependency-id>`
+
+为资产添加依赖关系。默认写入 `required: true`；传入 `--optional` 时写入 `required: false`。命令会拒绝不存在的依赖资产、重复依赖、循环依赖，以及 target compatibility 不匹配的依赖。
+
+```bash
+node ./src/cli.js add-dependency agent agent.harness-manager skill skill.prompt-authoring
+node ./src/cli.js add-dependency agent agent.harness-manager instruction instruction.repository-guardrails --optional
 ```
 
 ### `bump-version <kind> <id> <version>`

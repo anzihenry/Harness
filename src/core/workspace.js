@@ -527,6 +527,66 @@ export async function updateAssetMetadata(kind, assetId, options = {}) {
   };
 }
 
+export async function addAssetDependency(kind, assetId, dependencyKind, dependencyId, options = {}) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+  assertSupportedKind(dependencyKind);
+  assertValidAssetId(dependencyKind, dependencyId);
+
+  const assets = await listAssets();
+  const assetMap = createAssetMap(assets);
+  const asset = assetMap.get(assetId);
+  if (!asset) {
+    throw new Error(`Asset not found: ${kind}:${assetId}`);
+  }
+
+  const dependencyAsset = assetMap.get(dependencyId);
+  if (!dependencyAsset) {
+    throw new Error(`Dependency asset not found: ${dependencyKind}:${dependencyId}`);
+  }
+
+  const existingDependencies = asset.dependencies || [];
+  const dependencyExists = existingDependencies.some((dependency) => dependency.kind === dependencyKind && dependency.id === dependencyId);
+  if (dependencyExists) {
+    throw new Error(`Asset dependency already exists: ${assetId} -> ${dependencyKind}:${dependencyId}`);
+  }
+
+  for (const target of asset.compatibility?.targets || []) {
+    if (!dependencyAsset.compatibility?.targets?.includes(target)) {
+      throw new Error(`Dependency ${dependencyId} is missing required target ${target} for ${assetId}`);
+    }
+  }
+
+  const nextDependency = {
+    kind: dependencyKind,
+    id: dependencyId,
+    required: options.optional === "true" ? false : true
+  };
+  const updatedMetadata = {
+    ...stripRenderedContent(asset),
+    dependencies: [...existingDependencies, nextDependency].sort((left, right) => dependencyKey(left).localeCompare(dependencyKey(right)))
+  };
+  const updatedAsset = {
+    ...updatedMetadata,
+    renderedContent: asset.renderedContent
+  };
+  const nextAssetMap = new Map(assetMap);
+  nextAssetMap.set(assetId, updatedAsset);
+  const selection = resolveAssetSelection(updatedAsset, nextAssetMap, { includeDependencies: true });
+  if (selection.cycles.length > 0) {
+    throw new Error(`Dependency cycle would be created: ${selection.cycles[0].join(" -> ")}`);
+  }
+
+  await saveAssetFiles(kind, assetId, updatedMetadata, asset.renderedContent);
+
+  return {
+    kind,
+    id: assetId,
+    dependency: nextDependency,
+    dependencyCount: updatedMetadata.dependencies.length
+  };
+}
+
 export async function bumpAssetVersion(kind, assetId, nextVersion, options = {}) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

@@ -3,6 +3,7 @@
 import { createRequire } from "node:module";
 import { listAdapterTargets } from "./core/adapters.js";
 import {
+  addAssetDependency,
   bumpAssetVersion,
   createAsset,
   diffAsset,
@@ -61,6 +62,7 @@ Usage:
   harness validate [--json]
   harness new <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b] [--version x.y.z] [--note <text>]
   harness set <kind> <id> [--name <name>] [--description <text>] [--owner <owner>] [--tags a,b] [--targets a,b]
+  harness add-dependency <kind> <id> <dependency-kind> <dependency-id> [--optional]
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness history <kind> <id> [--json]
@@ -78,6 +80,7 @@ Examples:
   harness validate --json
   harness new skill skill.agent-review --owner team-harness --tags review,agent
   harness set skill skill.agent-review --owner team-platform --tags review,quality
+  harness add-dependency agent agent.harness-manager skill skill.prompt-authoring
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
   harness history skill skill.prompt-authoring --json
@@ -313,6 +316,20 @@ async function main() {
       const result = await updateAssetMetadata(kind, assetId, flags);
       console.log(`Updated [${result.kind}] ${result.id} @ ${result.version}`);
       console.log(`Fields: ${result.updatedFields.join(", ")}`);
+      return;
+    }
+
+    case "add-dependency": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId, dependencyKind, dependencyId] = positionals;
+      if (!kind || !assetId || !dependencyKind || !dependencyId) {
+        throw new Error("Usage: harness add-dependency <kind> <id> <dependency-kind> <dependency-id> [--optional]");
+      }
+
+      const result = await addAssetDependency(kind, assetId, dependencyKind, dependencyId, flags);
+      console.log(`Added dependency to [${result.kind}] ${result.id}`);
+      console.log(`Dependency: ${result.dependency.kind}:${result.dependency.id} (${result.dependency.required ? "required" : "optional"})`);
+      console.log(`Dependencies: ${result.dependencyCount}`);
       return;
     }
 

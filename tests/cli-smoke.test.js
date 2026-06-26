@@ -379,6 +379,67 @@ test("set rejects unsupported compatibility targets", () => {
   }
 });
 
+test("add-dependency updates dependency graphs and rejects duplicate dependencies", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, [
+      "add-dependency",
+      "skill",
+      "skill.prompt-authoring",
+      "instruction",
+      "instruction.repository-guardrails",
+      "--optional"
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Added dependency to \[skill\] skill\.prompt-authoring/);
+    assert.match(result.stdout, /Dependency: instruction:instruction\.repository-guardrails \(optional\)/);
+    assert.match(result.stdout, /Dependencies: 1/);
+
+    result = runCli(workspaceDir, ["show", "skill", "skill.prompt-authoring", "--resolved"]);
+    assert.equal(result.status, 0, result.stderr);
+    const resolvedSkill = JSON.parse(result.stdout);
+    assert.equal(resolvedSkill.summary.directDependencyCount, 1);
+    assert.equal(resolvedSkill.summary.resolvedAssetCount, 2);
+    assert.equal(resolvedSkill.resolvedDependencies[0].required, false);
+    assert.equal(resolvedSkill.resolvedDependencies[0].asset.id, "instruction.repository-guardrails");
+
+    result = runCli(workspaceDir, [
+      "add-dependency",
+      "skill",
+      "skill.prompt-authoring",
+      "instruction",
+      "instruction.repository-guardrails"
+    ]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Asset dependency already exists: skill\.prompt-authoring -> instruction:instruction\.repository-guardrails/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
+test("add-dependency rejects missing dependencies and cycles", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["add-dependency", "skill", "skill.prompt-authoring", "instruction", "instruction.missing"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Dependency asset not found: instruction:instruction\.missing/);
+
+    result = runCli(workspaceDir, ["add-dependency", "skill", "skill.prompt-authoring", "agent", "agent.harness-manager"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Dependency cycle would be created: skill\.prompt-authoring -> agent\.harness-manager -> skill\.prompt-authoring/);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 
