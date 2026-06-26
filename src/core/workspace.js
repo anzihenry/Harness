@@ -1088,6 +1088,58 @@ export async function getAssetDependencies(kind, assetId) {
   };
 }
 
+export async function getAssetDependents(kind, assetId) {
+  assertSupportedKind(kind);
+  assertValidAssetId(kind, assetId);
+
+  const assets = await listAssets();
+  const targetAsset = assets.find((asset) => asset.id === assetId);
+  if (!targetAsset) {
+    throw new Error(`Asset not found: ${kind}:${assetId}`);
+  }
+
+  const directDependents = assets
+    .filter((asset) => (asset.dependencies || []).some((dependency) => dependency.kind === kind && dependency.id === assetId))
+    .map(summarizeResolvedAsset)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const paths = [];
+  const seenUpstream = new Map();
+
+  function walk(currentId, pathIds) {
+    for (const asset of assets) {
+      const dependsOnCurrent = (asset.dependencies || []).some((dependency) => dependency.id === currentId);
+      if (!dependsOnCurrent || pathIds.includes(asset.id)) {
+        continue;
+      }
+
+      const nextPathIds = [asset.id, ...pathIds];
+      seenUpstream.set(asset.id, summarizeResolvedAsset(asset));
+      paths.push(nextPathIds);
+      walk(asset.id, nextPathIds);
+    }
+  }
+
+  walk(assetId, [assetId]);
+
+  return {
+    id: targetAsset.id,
+    kind: targetAsset.kind,
+    version: targetAsset.version,
+    directDependents,
+    upstreamAssets: [...seenUpstream.values()].sort((left, right) => left.id.localeCompare(right.id)),
+    paths: paths
+      .map((pathIds) => ({
+        assets: pathIds
+      }))
+      .sort((left, right) => left.assets.join(">").localeCompare(right.assets.join(">"))),
+    summary: {
+      directDependentCount: directDependents.length,
+      upstreamAssetCount: seenUpstream.size,
+      pathCount: paths.length
+    }
+  };
+}
+
 export async function getAssetHistory(kind, assetId) {
   assertSupportedKind(kind);
   assertValidAssetId(kind, assetId);

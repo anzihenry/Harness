@@ -10,6 +10,7 @@ import {
   createAsset,
   diffAsset,
   exportWorkspace,
+  getAssetDependents,
   getAssetDependencies,
   getAssetHistory,
   initWorkspace,
@@ -74,6 +75,7 @@ Usage:
   harness bump-version <kind> <id> <version> [--note <text>]
   harness diff <kind> <id> <from-version> [to-version] [--json]
   harness deps <kind> <id> [--json]
+  harness dependents <kind> <id> [--json]
   harness history <kind> <id> [--json]
   harness show <kind> <id> [version] [--metadata|--content|--resolved]
   harness export [target] [--entry <kind:id>] [--include-dependencies] [--json]
@@ -97,6 +99,7 @@ Examples:
   harness bump-version skill skill.prompt-authoring 1.1.0 --note "Refined guidance"
   harness diff skill skill.prompt-authoring 1.0.0 1.1.0 --json
   harness deps agent agent.harness-manager --json
+  harness dependents skill skill.prompt-authoring --json
   harness history skill skill.prompt-authoring --json
   harness show skill skill.prompt-authoring 1.0.0
   harness show skill skill.prompt-authoring --content
@@ -457,6 +460,33 @@ async function main() {
         console.log("");
         result.directDependencies.forEach((dependency) => {
           console.log(`- ${dependency.kind}:${dependency.id} (${dependency.required ? "required" : "optional"}, ${dependency.status})`);
+        });
+      }
+      return;
+    }
+
+    case "dependents": {
+      const { flags, positionals } = parseFlags(args);
+      const [kind, assetId] = positionals;
+      if (!kind || !assetId) {
+        throw new Error("Usage: harness dependents <kind> <id> [--json]");
+      }
+
+      const result = await getAssetDependents(kind, assetId);
+      if (flags.json === "true") {
+        printJson(result);
+        return;
+      }
+
+      console.log(`Dependents: ${result.id}`);
+      console.log(`Kind: ${result.kind}`);
+      console.log(`Direct: ${result.directDependents.length}`);
+      console.log(`Upstream assets: ${result.upstreamAssets.length}`);
+      console.log(`Paths: ${result.paths.length}`);
+      if (result.paths.length > 0) {
+        console.log("");
+        result.paths.forEach((pathEntry) => {
+          console.log(`- ${pathEntry.assets.join(" -> ")}`);
         });
       }
       return;

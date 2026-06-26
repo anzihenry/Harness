@@ -122,6 +122,7 @@ node ./src/cli.js remove-dependency skill skill.agent-review instruction instruc
 node ./src/cli.js bump-version skill skill.agent-review 1.1.0 --note "Expanded rubric"
 node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 node ./src/cli.js deps agent agent.harness-manager --json
+node ./src/cli.js dependents skill skill.prompt-authoring --json
 node ./src/cli.js history skill skill.agent-review --json
 node ./src/cli.js show skill skill.prompt-authoring --metadata
 node ./src/cli.js show skill skill.prompt-authoring --content
@@ -266,6 +267,15 @@ node ./src/cli.js diff skill skill.agent-review 1.0.0 1.1.0 --json
 ```bash
 node ./src/cli.js deps agent agent.harness-manager
 node ./src/cli.js deps agent agent.harness-manager --json
+```
+
+### `dependents <kind> <id>`
+
+查看哪些资产直接或递归依赖了指定资产。传入 `--json` 时返回 `directDependents`、`upstreamAssets` 和依赖路径 `paths`。
+
+```bash
+node ./src/cli.js dependents skill skill.prompt-authoring
+node ./src/cli.js dependents skill skill.prompt-authoring --json
 ```
 
 ### `history <kind> <id>`

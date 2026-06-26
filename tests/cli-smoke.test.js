@@ -644,6 +644,63 @@ test("deps reports direct and recursive dependency graph details", () => {
   }
 });
 
+test("dependents reports direct and recursive upstream paths", () => {
+  const workspaceDir = createWorkspaceDir();
+
+  try {
+    let result = runCli(workspaceDir, ["init"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["clone", "agent", "agent.harness-manager", "agent.platform-manager"]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, [
+      "add-dependency",
+      "agent",
+      "agent.platform-manager",
+      "agent",
+      "agent.harness-manager"
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+
+    result = runCli(workspaceDir, ["dependents", "skill", "skill.prompt-authoring"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Dependents: skill\.prompt-authoring/);
+    assert.match(result.stdout, /Direct: 2/);
+    assert.match(result.stdout, /Upstream assets: 2/);
+    assert.match(result.stdout, /Paths: 3/);
+    assert.match(result.stdout, /- agent\.harness-manager -> skill\.prompt-authoring/);
+    assert.match(result.stdout, /- agent\.platform-manager -> skill\.prompt-authoring/);
+    assert.match(result.stdout, /- agent\.platform-manager -> agent\.harness-manager -> skill\.prompt-authoring/);
+
+    result = runCli(workspaceDir, ["dependents", "skill", "skill.prompt-authoring", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const dependentsResult = JSON.parse(result.stdout);
+    assert.equal(dependentsResult.id, "skill.prompt-authoring");
+    assert.deepEqual(
+      dependentsResult.directDependents.map((asset) => asset.id),
+      ["agent.harness-manager", "agent.platform-manager"]
+    );
+    assert.deepEqual(
+      dependentsResult.upstreamAssets.map((asset) => asset.id),
+      ["agent.harness-manager", "agent.platform-manager"]
+    );
+    assert.deepEqual(
+      dependentsResult.paths.map((pathEntry) => pathEntry.assets),
+      [
+        ["agent.harness-manager", "skill.prompt-authoring"],
+        ["agent.platform-manager", "agent.harness-manager", "skill.prompt-authoring"],
+        ["agent.platform-manager", "skill.prompt-authoring"]
+      ]
+    );
+    assert.equal(dependentsResult.summary.directDependentCount, 2);
+    assert.equal(dependentsResult.summary.upstreamAssetCount, 2);
+    assert.equal(dependentsResult.summary.pathCount, 3);
+  } finally {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  }
+});
+
 test("init refuses to overwrite an existing workspace without --force", () => {
   const workspaceDir = createWorkspaceDir();
 
